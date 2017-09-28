@@ -17,6 +17,16 @@ var (
 	remote = flag.String("remote", "", "remote location for backup files")
 )
 
+func check(err error, msg string) {
+	if err == nil {
+		return
+	}
+	if msg == "" {
+		log.Fatal(err)
+	}
+	log.Fatalf("%s: %s\n", msg, err)
+}
+
 func main() {
 	log.SetFlags(0)
 	flag.Usage = func() {
@@ -67,17 +77,13 @@ func backup(args []string) {
 
 	dir := args[0]
 	info, err := os.Stat(dir)
-	if err != nil {
-		log.Fatal(err)
-	}
+	check(err, "stat backup dir")
 	if !info.IsDir() {
 		log.Fatal("can only backup directories")
 	}
 	if dir == "." {
 		dir, err = os.Getwd()
-		if err != nil {
-			log.Fatalln(`cannot resolve ".":`, err)
-		}
+		check(err, `resolving "."`)
 	}
 	if !strings.HasSuffix(dir, "/") {
 		dir += "/"
@@ -87,13 +93,9 @@ func backup(args []string) {
 	indexPath := fmt.Sprintf("%s/%s.full.index", *remote, name)
 	dataPath := fmt.Sprintf("%s/%s.full.data", *remote, name)
 	index, err := os.Create(indexPath)
-	if err != nil {
-		log.Fatalln("creating index file:", err)
-	}
+	check(err, "creating index file")
 	data, err := os.Create(dataPath)
-	if err != nil {
-		log.Fatalln("creating data file:", err)
-	}
+	check(err, "creating data file")
 
 	dataOffset := int64(0)
 	filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
@@ -110,9 +112,7 @@ func backup(args []string) {
 		}
 		if info.IsDir() {
 			_, err = fmt.Fprintf(index, "%s d %o %d 0 %s %s 0\n", relpath, info.Mode()&os.ModePerm, info.ModTime().Unix(), "xxx", "xxx")
-			if err != nil {
-				log.Fatalln("writing to index")
-			}
+			check(err, "writing to index")
 		} else {
 			size, err := store(path, data)
 			if err != nil {
@@ -128,13 +128,9 @@ func backup(args []string) {
 	})
 
 	err = data.Close()
-	if err != nil {
-		log.Fatalln("closing data file:", err)
-	}
+	check(err, "closing data file")
 	err = index.Close()
-	if err != nil {
-		log.Fatalln("closing index file:", err)
-	}
+	check(err, "closing index file")
 	log.Println("wrote new backup:", name)
 }
 
@@ -170,14 +166,10 @@ func restore(args []string) {
 	name := args[0]
 	indexPath := fmt.Sprintf("%s/%s.full.index", *remote, name)
 	index, err := os.Open(indexPath)
-	if err != nil {
-		log.Fatal(err)
-	}
+	check(err, "open index file")
 	dataPath := fmt.Sprintf("%s/%s.full.data", *remote, name)
 	data, err := os.Open(dataPath)
-	if err != nil {
-		log.Fatal(err)
-	}
+	check(err, "open data file")
 
 	target := args[1]
 	err = os.MkdirAll(target, 0777)
@@ -186,9 +178,7 @@ func restore(args []string) {
 	}
 	if target == "." {
 		target, err = os.Getwd()
-		if err != nil {
-			log.Fatalln(`resolving ".":`, err)
-		}
+		check(err, `resolving "."`)
 	}
 	if !strings.HasSuffix(target, "/") {
 		target += "/"
@@ -221,58 +211,39 @@ func restore(args []string) {
 			log.Fatalf("invalid offset %s: %s\n", err)
 		}
 		tpath := target + t[0]
+
 		switch t[1] {
 		case "f":
 			f, err := os.Create(tpath)
-			if err != nil {
-				log.Fatalln("restoring file:", err)
-			}
+			check(err, "restoring file")
 			_, err = data.Seek(offset, 0)
-			if err != nil {
-				log.Fatalln("seeking in data file failed:", err)
-			}
+			check(err, "seeking in data file")
 			r := &io.LimitedReader{R: f, N: size}
 			_, err = io.Copy(f, r)
-			if err != nil {
-				log.Fatalln("restoring contents of file:", err)
-			}
+			check(err, "restoring contents of file")
 			err = f.Close()
-			if err != nil {
-				log.Fatalln("closing restored file:", err)
-			}
+			check(err, "closing restored file")
 			err = os.Chmod(tpath, perm)
-			if err != nil {
-				log.Printf("setting permissions %o on restored file %s: %s\n", perm, tpath, err)
-			}
+			check(err, "setting permisssions on restored file")
 			err = os.Chtimes(tpath, mtm, mtm)
-			if err != nil {
-				log.Fatal("setting mtime for restored file %s: %s\n", tpath, err)
-			}
+			check(err, "setting mtimd/atime on restored file")
 
 		case "d":
 			if t[0] != "." {
 				err = os.Mkdir(tpath, perm)
-				if err != nil {
-					log.Fatalln("restoring directory:", err)
-				}
+				check(err, "restoring directory")
 			}
 			err = os.Chtimes(tpath, mtm, mtm)
-			if err != nil {
-				log.Fatal("setting mtime for directory %s: %s\n", tpath, err)
-			}
+			check(err, "setting mtime for restored directory")
 		default:
 			log.Fatalln("unknown file type:", tpath)
 		}
 	}
 
 	err = data.Close()
-	if err != nil {
-		log.Fatalln("closing data file:", err)
-	}
+	check(err, "closing data file")
 	err = index.Close()
-	if err != nil {
-		log.Fatalln("closing index file:", err)
-	}
+	check(err, "closing index file")
 	log.Println("restored")
 }
 
