@@ -85,12 +85,12 @@ type Index struct {
 	contents     []*File
 }
 
-func readIndex(b Backup) (idx *Index, err error) {
+func readIndex(b *Backup) (idx *Index, err error) {
 	kindName := "full"
 	if b.incremental {
 		kindName = "incr"
 	}
-	path := fmt.Sprintf("%s/%s.index.%s", *remote, b.name, kindName)
+	path := fmt.Sprintf("%s/%s.index.%s", config.Remote, b.name, kindName)
 	f, err := os.Open(path)
 	if err != nil {
 		return nil, fmt.Errorf("open index file: %s", err)

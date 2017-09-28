@@ -64,10 +64,8 @@ when restoring incremental backups:
 
 
 plan of attack:
-- then do incremental
-- then add some cli flags or config file to make usage easier
-- then encryption
-- then cli flags for include/exclude
+- then encryption & compression with streaming interface
+- then s3 support
+- then cli flags for include/exclude and the incremental/full intervals
 - then cleaning up old backups
-- then compression
 - done

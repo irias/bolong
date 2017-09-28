@@ -1,18 +1,23 @@
 package main
 
 import (
+	"encoding/json"
 	"flag"
 	"fmt"
 	"io"
 	"log"
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
 	"time"
 )
 
 var (
-	remote = flag.String("remote", "", "remote location for backup files")
+	configPath = flag.String("config", "", "path to config file")
+	config     struct {
+		Remote string
+	}
 )
 
 func check(err error, msg string) {
@@ -29,9 +34,9 @@ func main() {
 	log.SetFlags(0)
 	flag.Usage = func() {
 		log.Println("usage:")
-		log.Println("\tbackup -remote /path/to/storage backup")
-		log.Println("\tbackup -remote /path/to/storage restore")
-		log.Println("\tbackup -remote /path/to/storage list")
+		log.Println("\tbackup [-config config.json] backup [directory]")
+		log.Println("\tbackup [-config config.json] restore destination [backup-id]")
+		log.Println("\tbackup [-config config.json] list")
 	}
 	flag.Parse()
 	args := flag.Args()
@@ -40,9 +45,16 @@ func main() {
 		os.Exit(1)
 	}
 
-	if *remote == "" {
-		flag.Usage()
-		os.Exit(1)
+	if *configPath == "" {
+		findConfigPath()
+	}
+	f, err := os.Open(*configPath)
+	check(err, "opening config file")
+	err = json.NewDecoder(f).Decode(&config)
+	check(err, "parsing config file")
+
+	if config.Remote == "" {
+		log.Fatal("remote storage is a required config field")
 	}
 
 	cmd := args[0]
@@ -60,6 +72,27 @@ func main() {
 	}
 }
 
+func findConfigPath() {
+	dir, err := os.Getwd()
+	check(err, "looking for config file in current working directory")
+	for {
+		xpath := dir + "/.bolong.json"
+		_, err := os.Stat(xpath)
+		if err == nil {
+			*configPath = xpath
+			return
+		}
+		if !os.IsNotExist(err) {
+			log.Fatal("cannot find a .bolong.json up in directory hierarchy")
+		}
+		ndir := path.Dir(dir)
+		if ndir == dir {
+			log.Fatal("cannot find a .bolong.json up in directory hierarchy")
+		}
+		dir = ndir
+	}
+}
+
 func backup(args []string) {
 	fs := flag.NewFlagSet("backup", flag.ExitOnError)
 	incremental := fs.Bool("incremental", false, "do incremental backup instead of full backup")
@@ -70,14 +103,19 @@ func backup(args []string) {
 		os.Exit(2)
 	}
 	args = fs.Args()
-	if len(args) != 1 {
+
+	dir := "."
+	switch len(args) {
+	case 0:
+	case 1:
+		dir = args[0]
+	default:
 		fs.Usage()
 		os.Exit(2)
 	}
 
-	log.Println("backuping up", args[0])
+	log.Println("backuping up", dir)
 
-	dir := args[0]
 	info, err := os.Stat(dir)
 	check(err, "stat backup dir")
 	if !info.IsDir() {
@@ -110,7 +148,7 @@ func backup(args []string) {
 	}
 
 	name := time.Now().Format("20060201-150405")
-	dataPath := fmt.Sprintf("%s/%s.data", *remote, name)
+	dataPath := fmt.Sprintf("%s/%s.data", config.Remote, name)
 	data, err := os.Create(dataPath)
 	check(err, "creating data file")
 
@@ -182,7 +220,7 @@ func backup(args []string) {
 	if *incremental {
 		kind = "incr"
 	}
-	indexPath := fmt.Sprintf("%s/%s.index.%s", *remote, name, kind)
+	indexPath := fmt.Sprintf("%s/%s.index.%s", config.Remote, name, kind)
 	index, err := os.Create(indexPath)
 	check(err, "creating index file")
 	err = writeIndex(index, nidx)
@@ -226,18 +264,43 @@ func restore(args []string) {
 		os.Exit(2)
 	}
 	args = fs.Args()
-	if len(args) != 2 {
+
+	var target, name string
+	switch len(args) {
+	case 1:
+		target = args[0]
+		name = "latest"
+	case 2:
+		target = args[0]
+		name = args[1]
+	default:
 		fs.Usage()
 		os.Exit(2)
 	}
 
-	log.Printf("restoring %s to %s\n", args[0], args[1])
+	log.Printf("restoring %s to %s\n", name, target)
 
-	name := args[0]
-	backups, err := findBackups(name)
-	check(err, "finding backups")
+	var backups []*Backup
+	if name == "latest" {
+		backups, err = listBackups()
+		check(err, "listing backups")
+		if len(backups) == 0 {
+			log.Fatal("no backups available")
+		}
+		var r []*Backup
+		for i := len(backups) - 1; i >= 0; i-- {
+			r = append(r, backups[i])
+			if !backups[i].incremental {
+				break
+			}
+		}
+		backups = r
+	} else {
+		backups, err = findBackups(name)
+		check(err, "finding backups")
+	}
 	backup, backups := backups[0], backups[1:]
-	idx, err := readIndex(*backup)
+	idx, err := readIndex(backup)
 	check(err, "parsing index")
 
 	need := map[string]struct{}{} // files we still need to restore
@@ -245,7 +308,6 @@ func restore(args []string) {
 		need[f.name] = struct{}{}
 	}
 
-	target := args[1]
 	err = os.MkdirAll(target, 0777)
 	if err != nil && !os.IsExist(err) {
 		log.Fatalln("creating destination directory:", err)
@@ -273,7 +335,7 @@ func restore(args []string) {
 		}
 
 		if len(restores) > 0 {
-			dataPath := fmt.Sprintf("%s/%s.data", *remote, backup.name)
+			dataPath := fmt.Sprintf("%s/%s.data", config.Remote, backup.name)
 			log.Println("opening data file", dataPath)
 			data, err := os.Open(dataPath)
 			check(err, "open data file")
@@ -323,7 +385,7 @@ func restore(args []string) {
 
 		backup = backups[0]
 		backups = backups[1:]
-		idx, err = readIndex(*backup)
+		idx, err = readIndex(backup)
 		check(err, "parsing next index")
 		log.Println("next backup loaded", backup.name, backup.incremental)
 	}
