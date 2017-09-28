@@ -46,8 +46,6 @@ paths are normalized to contain just one slash
 
 plan of attack:
 
-- implement doing full backup and restore.  no cli flags yet.  no incremental yet, no compression or encryption.
-- then list command
 - then do incremental
 - then encryption
 - then cli flags for include/exclude

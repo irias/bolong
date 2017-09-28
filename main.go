@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"log"
 	"os"
 	"path/filepath"
@@ -33,6 +34,7 @@ func main() {
 		log.Println("usage:")
 		log.Println("\tbackup -remote /path/to/storage backup")
 		log.Println("\tbackup -remote /path/to/storage restore")
+		log.Println("\tbackup -remote /path/to/storage list")
 	}
 	flag.Parse()
 	args := flag.Args()
@@ -53,6 +55,8 @@ func main() {
 		backup(args)
 	case "restore":
 		restore(args)
+	case "list":
+		list(args)
 	default:
 		flag.Usage()
 		os.Exit(1)
@@ -64,12 +68,12 @@ func backup(args []string) {
 	err := fs.Parse(args)
 	if err != nil {
 		log.Println(err)
-		flag.Usage()
+		fs.Usage()
 		os.Exit(2)
 	}
 	args = fs.Args()
 	if len(args) != 1 {
-		flag.Usage()
+		fs.Usage()
 		os.Exit(2)
 	}
 
@@ -152,12 +156,12 @@ func restore(args []string) {
 	err := fs.Parse(args)
 	if err != nil {
 		log.Println(err)
-		flag.Usage()
+		fs.Usage()
 		os.Exit(2)
 	}
 	args = fs.Args()
 	if len(args) != 2 {
-		flag.Usage()
+		fs.Usage()
 		os.Exit(2)
 	}
 
@@ -267,6 +271,33 @@ func verifyPath(path string) {
 		}
 		if elem == "" {
 			log.Fatal(`path invalid, contains empty elements, eg "//"`)
+		}
+	}
+}
+
+func list(args []string) {
+	fs := flag.NewFlagSet("list", flag.ExitOnError)
+	err := fs.Parse(args)
+	if err != nil {
+		log.Println(err)
+		fs.Usage()
+		os.Exit(2)
+	}
+	args = fs.Args()
+	if len(args) != 0 {
+		fs.Usage()
+		os.Exit(2)
+	}
+
+	l, err := ioutil.ReadDir(*remote)
+	check(err, "reading remote directory")
+	for _, info := range l {
+		name := info.Name()
+		if strings.HasSuffix(name, ".full.index") {
+			fmt.Println(name[:len(name)-len(".full.index")])
+		}
+		if strings.HasSuffix(name, ".incr.index") {
+			fmt.Println(name[:len(name)-len(".incr.index")])
 		}
 	}
 }
