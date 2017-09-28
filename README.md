@@ -15,17 +15,17 @@ backup -remote /n/backups -key backup.key restore -exclude '*.png' <backup-id> .
 
 
 
-name.incr.index
-name.incr.data
-name.full.index
-name.full.data
+name.index.incr
+name.data
+name.index.full
+name.data
 
 list dir
 get all the names.
 should be in incremental order when sorted by name. so just timestamped.
 backup id's are the name-part.
 just looking at the files tells you what which files would need to be retrieved.
-the .index files have a full listing you would get when doing an extraction, including permission, if it's a dir, username/groupname.
+the index files have a full listing you would get when doing an extraction, including permission, if it's a dir, username/groupname.
 index file is encrypted too.
 index file contains offset into data file.
 so data is just all the content appended.
@@ -33,10 +33,16 @@ when restoring, we can fetch the data streaming, and write the necessary files a
 
 example index file:
 
-path/to d 755 1506578834 0 mjl mjl 0
-path/to/file f 644 1506578834 1234 mjl mjl 0
-path/to/another-file f 644 1506578834 100 mjl mjl 1234
-path/to/another-file f 644 1506578834 123123123 mjl mjl 1334
+index0
+20170101-122334
+- path/removed
++ path/to/file
+= d 755 1506578834 0 mjl mjl 0 path/to
+= f 644 1506578834 1234 mjl mjl 0 path/to/file
+= f 644 1506578834 100 mjl mjl 1234 path/to/another-file
+= f 644 1506578834 123123123 mjl mjl 1334 path/to/another-file
+.
+
 
 "." is included
 ".." cannot occur as path element
@@ -44,9 +50,22 @@ paths cannot start with a slash
 paths are normalized to contain just one slash
 
 
-plan of attack:
+incremental backups:
+- read last index
+- walk through tree
+- remove paths that are gone
+- add files that are new/modified
+- keep track of the additions/removals, also put them in the index file?
+- also put the filename of the previous index file in the new index file
 
+when restoring incremental backups:
+- read the new index file.  gives us list of files we will need.  keep of track of the work we still need to do.  once empty, we quit.
+- go through the contents, restore all files the that were added in this version.  if no more work, quit. otherwise, read the next index file and restore all added files that are still in the work list.
+
+
+plan of attack:
 - then do incremental
+- then add some cli flags or config file to make usage easier
 - then encryption
 - then cli flags for include/exclude
 - then cleaning up old backups

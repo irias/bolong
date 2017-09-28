@@ -1,15 +1,12 @@
 package main
 
 import (
-	"bufio"
 	"flag"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"log"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"time"
 )
@@ -65,6 +62,7 @@ func main() {
 
 func backup(args []string) {
 	fs := flag.NewFlagSet("backup", flag.ExitOnError)
+	incremental := fs.Bool("incremental", false, "do incremental backup instead of full backup")
 	err := fs.Parse(args)
 	if err != nil {
 		log.Println(err)
@@ -93,11 +91,26 @@ func backup(args []string) {
 		dir += "/"
 	}
 
+	nidx := &Index{}
+	var oidx *Index
+	unseen := map[string]*File{}
+	if *incremental {
+		backups, err := listBackups()
+		check(err, "listing backups")
+		if len(backups) == 0 {
+			log.Fatal("no previous backups")
+		}
+		b := backups[len(backups)-1]
+		nidx.previousName = b.name
+		oidx, err = readIndex(b)
+		check(err, "parsing previous index file")
+		for _, f := range oidx.contents {
+			unseen[f.name] = f
+		}
+	}
+
 	name := time.Now().Format("20060201-150405")
-	indexPath := fmt.Sprintf("%s/%s.full.index", *remote, name)
-	dataPath := fmt.Sprintf("%s/%s.full.data", *remote, name)
-	index, err := os.Create(indexPath)
-	check(err, "creating index file")
+	dataPath := fmt.Sprintf("%s/%s.data", *remote, name)
 	data, err := os.Create(dataPath)
 	check(err, "creating data file")
 
@@ -114,41 +127,94 @@ func backup(args []string) {
 		if relpath == "" {
 			relpath = "."
 		}
-		if info.IsDir() {
-			_, err = fmt.Fprintf(index, "%s d %o %d 0 %s %s 0\n", relpath, info.Mode()&os.ModePerm, info.ModTime().Unix(), "xxx", "xxx")
-			check(err, "writing to index")
-		} else {
-			size, err := store(path, data)
-			if err != nil {
-				log.Fatalf("writing %s: %s\n", path, err)
-			}
-			_, err = fmt.Fprintf(index, "%s f %o %d %d %s %s %d\n", relpath, info.Mode()&os.ModePerm, info.ModTime().Unix(), size, "xxx", "xxx", dataOffset)
-			if err != nil {
-				log.Fatalf("writing %s: %s\n", path, err)
-			}
-			dataOffset += size
+
+		size := int64(0)
+		if !info.IsDir() {
+			size = info.Size()
 		}
+		nf := &File{
+			info.IsDir(),
+			info.Mode() & os.ModePerm,
+			info.ModTime(),
+			size,
+			"xuser",
+			"xgroup",
+			-1, // data offset
+			relpath,
+		}
+
+		nidx.contents = append(nidx.contents, nf)
+
+		if *incremental {
+			of, ok := unseen[relpath]
+			if ok {
+				delete(unseen, relpath)
+				if !fileChanged(of, nf) {
+					return nil
+				}
+			} else {
+				nidx.add = append(nidx.add, relpath)
+			}
+		}
+
+		if !nf.isDir {
+			err := store(path, nf.size, data)
+			if err != nil {
+				log.Fatalf("writing %s: %s\n", path, err)
+			}
+			nf.dataOffset = dataOffset
+			dataOffset += nf.size
+		}
+
 		return nil
 	})
 
+	if *incremental {
+		for _, f := range unseen {
+			nidx.delete = append(nidx.delete, f.name)
+		}
+	}
+
 	err = data.Close()
 	check(err, "closing data file")
+
+	kind := "full"
+	if *incremental {
+		kind = "incr"
+	}
+	indexPath := fmt.Sprintf("%s/%s.index.%s", *remote, name, kind)
+	index, err := os.Create(indexPath)
+	check(err, "creating index file")
+	err = writeIndex(index, nidx)
+	check(err, "writing index file")
 	err = index.Close()
 	check(err, "closing index file")
+
 	log.Println("wrote new backup:", name)
 }
 
-func store(path string, data io.Writer) (int64, error) {
+func fileChanged(old, new *File) bool {
+	if old.name != new.name {
+		log.Fatalf("inconsistent fileChanged call, names don't match, %s != %s", old.name, new.name)
+	}
+	return old.isDir != new.isDir || old.size != new.size || old.mtime.Unix() != new.mtime.Unix() || old.permissions != new.permissions || old.user != new.user || old.group != new.group
+}
+
+func store(path string, size int64, data io.Writer) error {
 	f, err := os.Open(path)
 	if err != nil {
-		return -1, err
+		return err
 	}
-	size, err := io.Copy(data, f)
+	n, err := io.Copy(data, f)
 	if err != nil {
 		f.Close()
-		return -1, err
+		return err
 	}
-	return size, f.Close()
+	if n != size {
+		f.Close()
+		return fmt.Errorf("expected to write %d bytes, only wrote %d", size, n)
+	}
+	return f.Close()
 }
 
 func restore(args []string) {
@@ -168,12 +234,16 @@ func restore(args []string) {
 	log.Printf("restoring %s to %s\n", args[0], args[1])
 
 	name := args[0]
-	indexPath := fmt.Sprintf("%s/%s.full.index", *remote, name)
-	index, err := os.Open(indexPath)
-	check(err, "open index file")
-	dataPath := fmt.Sprintf("%s/%s.full.data", *remote, name)
-	data, err := os.Open(dataPath)
-	check(err, "open data file")
+	backups, err := findBackups(name)
+	check(err, "finding backups")
+	backup, backups := backups[0], backups[1:]
+	idx, err := readIndex(*backup)
+	check(err, "parsing index")
+
+	need := map[string]struct{}{} // files we still need to restore
+	for _, f := range idx.contents {
+		need[f.name] = struct{}{}
+	}
 
 	target := args[1]
 	err = os.MkdirAll(target, 0777)
@@ -188,91 +258,77 @@ func restore(args []string) {
 		target += "/"
 	}
 
-	lines := bufio.NewScanner(index)
-	for lines.Scan() {
-		t := strings.Split(lines.Text(), " ") // xxx should handle spaces in paths!
-		if len(t) != 8 {
-			log.Fatalf("invalid line, doesn't have 8 tokens: %s\n", lines.Text())
-		}
-		verifyPath(t[0])
-		perm0, err := strconv.ParseInt(t[2], 8, 64)
-		if err != nil {
-			log.Fatalf("invalid permission %s: %s\n", t[2], err)
-		}
-		perm := os.FileMode(perm0)
-
-		mtime, err := strconv.ParseInt(t[3], 10, 64)
-		if err != nil {
-			log.Fatalf("invalid mtime %s: %s\n", err)
-		}
-		mtm := time.Unix(mtime, 0)
-		size, err := strconv.ParseInt(t[4], 10, 64)
-		if err != nil {
-			log.Fatalf("invalid size %s: %s\n", err)
-		}
-		offset, err := strconv.ParseInt(t[7], 10, 64)
-		if err != nil {
-			log.Fatalf("invalid offset %s: %s\n", err)
-		}
-		tpath := target + t[0]
-
-		switch t[1] {
-		case "f":
-			f, err := os.Create(tpath)
-			check(err, "restoring file")
-			_, err = data.Seek(offset, 0)
-			check(err, "seeking in data file")
-			r := &io.LimitedReader{R: f, N: size}
-			_, err = io.Copy(f, r)
-			check(err, "restoring contents of file")
-			err = f.Close()
-			check(err, "closing restored file")
-			err = os.Chmod(tpath, perm)
-			check(err, "setting permisssions on restored file")
-			err = os.Chtimes(tpath, mtm, mtm)
-			check(err, "setting mtimd/atime on restored file")
-
-		case "d":
-			if t[0] != "." {
-				err = os.Mkdir(tpath, perm)
-				check(err, "restoring directory")
+	for {
+		// figure out if this backup has files we still need
+		var restores []*File
+		for _, file := range idx.contents {
+			if !file.isDir && file.dataOffset < 0 {
+				// not in this backup
+				continue
 			}
-			err = os.Chtimes(tpath, mtm, mtm)
-			check(err, "setting mtime for restored directory")
-		default:
-			log.Fatalln("unknown file type:", tpath)
+			if _, ok := need[file.name]; ok {
+				restores = append(restores, file)
+				delete(need, file.name)
+			}
 		}
+
+		if len(restores) > 0 {
+			dataPath := fmt.Sprintf("%s/%s.data", *remote, backup.name)
+			log.Println("opening data file", dataPath)
+			data, err := os.Open(dataPath)
+			check(err, "open data file")
+
+			// xxx should sort the restores by dataOffset, then read through the data, then restores as the files come along
+			for _, file := range restores {
+				tpath := target + file.name
+				if file.isDir {
+					if file.name != "." {
+						err = os.Mkdir(tpath, file.permissions)
+						check(err, "restoring directory")
+					}
+					err = os.Chtimes(tpath, file.mtime, file.mtime)
+					check(err, "setting mtime for restored directory")
+					continue
+				}
+
+				f, err := os.Create(tpath)
+				check(err, "restoring file")
+				log.Printf("restoring file %s, dataOffset %d, size %d\n", file.name, file.dataOffset, file.size)
+				_, err = data.Seek(file.dataOffset, 0)
+				check(err, "seeking in data file")
+				r := &io.LimitedReader{R: data, N: file.size}
+				n, err := io.Copy(f, r)
+				if n != file.size {
+					log.Fatalf("short file contents for file %s: expected to write %d, but wrote %d", file.name, file.size, n)
+				}
+				check(err, "restoring contents of file")
+				err = f.Close()
+				check(err, "closing restored file")
+				err = os.Chmod(tpath, file.permissions)
+				check(err, "setting permisssions on restored file")
+				err = os.Chtimes(tpath, file.mtime, file.mtime)
+				check(err, "setting mtimd/atime on restored file")
+			}
+
+			err = data.Close()
+			check(err, "closing data file")
+		}
+
+		if len(need) == 0 {
+			break
+		}
+		if len(backups) == 0 {
+			log.Fatalf("still need to restore files, but no more backups available")
+		}
+
+		backup = backups[0]
+		backups = backups[1:]
+		idx, err = readIndex(*backup)
+		check(err, "parsing next index")
+		log.Println("next backup loaded", backup.name, backup.incremental)
 	}
 
-	err = data.Close()
-	check(err, "closing data file")
-	err = index.Close()
-	check(err, "closing index file")
 	log.Println("restored")
-}
-
-func verifyPath(path string) {
-	if path == "." {
-		return
-	}
-	if path == "" {
-		log.Fatal("invalid path, it is empty")
-	}
-	if strings.HasPrefix(path, "/") {
-		log.Fatal("path invalid, starts with /")
-	}
-	t := strings.Split(path, "/")
-	for _, elem := range t {
-		if elem == "." {
-			log.Fatal(`path invalid, contains needless "."`)
-		}
-		if elem == ".." {
-			log.Fatal(`path invalid, contains ".."`)
-		}
-		if elem == "" {
-			log.Fatal(`path invalid, contains empty elements, eg "//"`)
-		}
-	}
 }
 
 func list(args []string) {
@@ -289,15 +345,9 @@ func list(args []string) {
 		os.Exit(2)
 	}
 
-	l, err := ioutil.ReadDir(*remote)
-	check(err, "reading remote directory")
-	for _, info := range l {
-		name := info.Name()
-		if strings.HasSuffix(name, ".full.index") {
-			fmt.Println(name[:len(name)-len(".full.index")])
-		}
-		if strings.HasSuffix(name, ".incr.index") {
-			fmt.Println(name[:len(name)-len(".incr.index")])
-		}
+	l, err := listBackups()
+	check(err, "listing backups")
+	for _, b := range l {
+		fmt.Println(b.name)
 	}
 }
