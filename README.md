@@ -83,7 +83,6 @@ data...
 
 
 plan of attack:
-- then encryption & compression with streaming interface
 - then s3 support
 - then cli flags for include/exclude and the incremental/full intervals
 - then cleaning up old backups

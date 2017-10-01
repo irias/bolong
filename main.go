@@ -5,22 +5,21 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"log"
 	"os"
 	"path"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
-	"sort"
-	"io/ioutil"
-
-	"github.com/pierrec/lz4"
 )
 
 var (
 	configPath = flag.String("config", "", "path to config file")
 	config     struct {
-		Remote string
+		Remote     string
+		Passphrase string
 	}
 )
 
@@ -38,8 +37,8 @@ func main() {
 	log.SetFlags(0)
 	flag.Usage = func() {
 		log.Println("usage:")
-		log.Println("\tbackup [-config config.json] backup [directory]")
-		log.Println("\tbackup [-config config.json] restore destination [backup-id]")
+		log.Println("\tbackup [-config config.json] backup [flags] [directory]")
+		log.Println("\tbackup [-config config.json] restore [flags] destination [backup-id]")
 		log.Println("\tbackup [-config config.json] list")
 	}
 	flag.Parse()
@@ -100,6 +99,7 @@ func findConfigPath() {
 func backup(args []string) {
 	fs := flag.NewFlagSet("backup", flag.ExitOnError)
 	incremental := fs.Bool("incremental", false, "do incremental backup instead of full backup")
+	verbose := fs.Bool("verbose", false, "print files being backed up")
 	err := fs.Parse(args)
 	if err != nil {
 		log.Println(err)
@@ -118,7 +118,9 @@ func backup(args []string) {
 		os.Exit(2)
 	}
 
-	log.Println("backuping up", dir)
+	if *verbose {
+		log.Println("backuping up", dir)
+	}
 
 	info, err := os.Stat(dir)
 	check(err, "stat backup dir")
@@ -153,9 +155,11 @@ func backup(args []string) {
 
 	name := time.Now().Format("20060102-150405")
 	dataPath := fmt.Sprintf("%s/%s.data", config.Remote, name)
-	data, err := os.Create(dataPath)
+	var data io.WriteCloser
+	data, err = os.Create(dataPath)
 	check(err, "creating data file")
-	lzdata := lz4.NewWriter(data)
+	data, err = NewSafeWriter(data)
+	check(err, "creating safe file")
 
 	dataOffset := int64(0)
 	filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
@@ -164,11 +168,14 @@ func backup(args []string) {
 		}
 		if !strings.HasPrefix(path, dir) {
 			log.Printf("path not prefixed by dir? path %s, dir %s\n", path, dir)
-			return filepath.SkipDir
+			return nil
 		}
 		relpath := path[len(dir):]
 		if relpath == "" {
 			relpath = "."
+		}
+		if strings.HasSuffix(relpath, "/.bolong.json") {
+			return nil
 		}
 
 		size := int64(0)
@@ -197,11 +204,18 @@ func backup(args []string) {
 				}
 			} else {
 				nidx.add = append(nidx.add, relpath)
+				if *verbose {
+					fmt.Println(relpath)
+				}
+			}
+		} else {
+			if *verbose {
+				fmt.Println(relpath)
 			}
 		}
 
 		if !nf.isDir {
-			err := store(path, nf.size, lzdata)
+			err := store(path, nf.size, data)
 			if err != nil {
 				log.Fatalf("writing %s: %s\n", path, err)
 			}
@@ -218,8 +232,6 @@ func backup(args []string) {
 		}
 	}
 
-	err = lzdata.Close()
-	check(err, "closing data file")
 	err = data.Close()
 	check(err, "closing data file")
 
@@ -228,17 +240,19 @@ func backup(args []string) {
 		kind = "incr"
 	}
 	indexPath := fmt.Sprintf("%s/%s.index.%s", config.Remote, name, kind)
-	index, err := os.Create(indexPath)
+	var index io.WriteCloser
+	index, err = os.Create(indexPath)
 	check(err, "creating index file")
-	lzindex := lz4.NewWriter(index)
-	err = writeIndex(lzindex, nidx)
+	index, err = NewSafeWriter(index)
+	check(err, "creating safe file")
+	err = writeIndex(index, nidx)
 	check(err, "writing index file")
-	err = lzindex.Close()
-	check(err, "closing lz4 index file")
 	err = index.Close()
 	check(err, "closing index file")
 
-	log.Println("wrote new backup:", name)
+	if *verbose {
+		log.Println("wrote new backup:", name)
+	}
 }
 
 func fileChanged(old, new *File) bool {
@@ -271,6 +285,7 @@ func store(path string, size int64, data io.Writer) (err error) {
 
 func restore(args []string) {
 	fs := flag.NewFlagSet("restore", flag.ExitOnError)
+	verbose := fs.Bool("verbose", false, "print restored files")
 	err := fs.Parse(args)
 	if err != nil {
 		log.Println(err)
@@ -302,7 +317,7 @@ func restore(args []string) {
 			log.Fatal("no backups available")
 		}
 		var r []*Backup
-		for i := len(backups)-1; i >= 0; i-- {
+		for i := len(backups) - 1; i >= 0; i-- {
 			r = append(r, backups[i])
 			if !backups[i].incremental {
 				break
@@ -321,7 +336,6 @@ func restore(args []string) {
 	for _, f := range idx.contents {
 		need[f.name] = struct{}{}
 	}
-
 
 	err = os.MkdirAll(target, 0777)
 	if err != nil && !os.IsExist(err) {
@@ -352,9 +366,11 @@ func restore(args []string) {
 		if len(restores) > 0 {
 			dataPath := fmt.Sprintf("%s/%s.data", config.Remote, backup.name)
 			log.Println("opening data file", dataPath)
-			lzdata, err := os.Open(dataPath)
+			var data io.ReadCloser
+			data, err := os.Open(dataPath)
 			check(err, "open data file")
-			data := lz4.NewReader(lzdata)
+			data, err = NewSafeReader(data)
+			check(err, "opening safe reader")
 
 			sort.Slice(restores, func(i, j int) bool {
 				// make sure directories are created in right order
@@ -366,6 +382,9 @@ func restore(args []string) {
 
 			offset := int64(0)
 			for _, file := range restores {
+				if *verbose {
+					fmt.Println(file.name)
+				}
 				tpath := target + file.name
 				if file.isDir {
 					if file.name != "." {
@@ -401,7 +420,7 @@ func restore(args []string) {
 				check(err, "setting mtimd/atime on restored file")
 			}
 
-			err = lzdata.Close()
+			err = data.Close()
 			check(err, "closing data file")
 		}
 

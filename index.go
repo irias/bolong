@@ -8,8 +8,6 @@ import (
 	"strconv"
 	"strings"
 	"time"
-
-	"github.com/pierrec/lz4"
 )
 
 type File struct {
@@ -93,14 +91,20 @@ func readIndex(b *Backup) (idx *Index, err error) {
 		kindName = "incr"
 	}
 	path := fmt.Sprintf("%s/%s.index.%s", config.Remote, b.name, kindName)
-	f, err := os.Open(path)
+	var f io.ReadCloser
+	f, err = os.Open(path)
 	if err != nil {
 		return nil, fmt.Errorf("open index file: %s", err)
 	}
-	lzr := lz4.NewReader(f)
+	tmpf, err := NewSafeReader(f)
+	if err != nil {
+		f.Close()
+		return nil, err
+	}
+	f = tmpf
 	defer func() {
 		nerr := f.Close()
-		if nerr != nil && err == nil {
+		if err == nil && nerr != nil {
 			err = fmt.Errorf("closing index file: %s", err)
 			idx = nil
 		}
@@ -109,20 +113,20 @@ func readIndex(b *Backup) (idx *Index, err error) {
 
 	idx = &Index{}
 
-	scanner := bufio.NewScanner(lzr)
+	scanner := bufio.NewScanner(f)
 	if !scanner.Scan() {
-		return nil, fmt.Errorf("empty index file")
+		return nil, fmt.Errorf("reading index file: %s", scanner.Err())
 	}
 	if scanner.Text() != "index0" {
 		return nil, fmt.Errorf(`first line of index file not magic "index0"`)
 	}
 	if !scanner.Scan() {
-		return nil, fmt.Errorf(`no second line in index`)
+		return nil, fmt.Errorf(`no second line in index: %s`, scanner.Err())
 	}
 	idx.previousName = scanner.Text()
 	for {
 		if !scanner.Scan() {
-			return nil, fmt.Errorf("unexpected end of index")
+			return nil, fmt.Errorf("unexpected end of index: %s", scanner.Err())
 		}
 		line := scanner.Text()
 		if line == "" {
