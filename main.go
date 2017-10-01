@@ -18,9 +18,17 @@ import (
 var (
 	configPath = flag.String("config", "", "path to config file")
 	config     struct {
-		Remote     string
+		Kind     string
+		Local    string
+		GoogleS3 struct {
+			AccessKey,
+			Secret,
+			Bucket,
+			Path      string
+		}
 		Passphrase string
 	}
+	remote Remote
 )
 
 func check(err error, msg string) {
@@ -56,8 +64,29 @@ func main() {
 	err = json.NewDecoder(f).Decode(&config)
 	check(err, "parsing config file")
 
-	if config.Remote == "" {
-		log.Fatal("remote storage is a required config field")
+	switch config.Kind {
+	case "local":
+		if config.Local == "" {
+			log.Fatal(`field "local" must be set for kind "local"`)
+		}
+		path := config.Local
+		if !strings.HasSuffix(path, "/") {
+			path += "/"
+		}
+		remote = &Local{path}
+	case "googles3":
+		if config.GoogleS3.AccessKey == "" || config.GoogleS3.Secret == "" || config.GoogleS3.Bucket == "" || config.GoogleS3.Path == "" {
+			log.Fatal(`fields "googles3.accessKey", "googles3.secret", googles3.bucket" and  "googles3.path" must be set`)
+		}
+		path := config.GoogleS3.Path
+		if !strings.HasPrefix(path, "/") || !strings.HasSuffix(path, "/") {
+			log.Fatal(`field "googles3.path" must start and end with a slash`)
+		}
+		remote = &GoogleS3{config.GoogleS3.Bucket, path}
+	case "":
+		log.Fatal(`missing field "kind", must be "local" or "googles3"`)
+	default:
+		log.Fatalf(`unknown remote kind "%s"`, config.Kind)
 	}
 
 	cmd := args[0]
@@ -154,9 +183,9 @@ func backup(args []string) {
 	}
 
 	name := time.Now().Format("20060102-150405")
-	dataPath := fmt.Sprintf("%s/%s.data", config.Remote, name)
+	dataPath := fmt.Sprintf("%s.data", name)
 	var data io.WriteCloser
-	data, err = os.Create(dataPath)
+	data, err = remote.Create(dataPath)
 	check(err, "creating data file")
 	data, err = NewSafeWriter(data)
 	check(err, "creating safe file")
@@ -174,7 +203,7 @@ func backup(args []string) {
 		if relpath == "" {
 			relpath = "."
 		}
-		if strings.HasSuffix(relpath, "/.bolong.json") {
+		if relpath == ".bolong.json" || strings.HasSuffix(relpath, "/.bolong.json") {
 			return nil
 		}
 
@@ -239,9 +268,9 @@ func backup(args []string) {
 	if *incremental {
 		kind = "incr"
 	}
-	indexPath := fmt.Sprintf("%s/%s.index.%s", config.Remote, name, kind)
+	indexPath := fmt.Sprintf("%s.index.%s", name, kind)
 	var index io.WriteCloser
-	index, err = os.Create(indexPath)
+	index, err = remote.Create(indexPath)
 	check(err, "creating index file")
 	index, err = NewSafeWriter(index)
 	check(err, "creating safe file")
@@ -364,10 +393,9 @@ func restore(args []string) {
 		}
 
 		if len(restores) > 0 {
-			dataPath := fmt.Sprintf("%s/%s.data", config.Remote, backup.name)
-			log.Println("opening data file", dataPath)
+			dataPath := fmt.Sprintf("%s.data", backup.name)
 			var data io.ReadCloser
-			data, err := os.Open(dataPath)
+			data, err := remote.Open(dataPath)
 			check(err, "open data file")
 			data, err = NewSafeReader(data)
 			check(err, "opening safe reader")
@@ -404,7 +432,6 @@ func restore(args []string) {
 
 				f, err := os.Create(tpath)
 				check(err, "restoring file")
-				log.Printf("restoring file %s, dataOffset %d, size %d\n", file.name, file.dataOffset, file.size)
 				r := &io.LimitedReader{R: data, N: file.size}
 				n, err := io.Copy(f, r)
 				if n != file.size {
@@ -437,8 +464,6 @@ func restore(args []string) {
 		check(err, "parsing next index")
 		log.Println("next backup loaded", backup.name, backup.incremental)
 	}
-
-	log.Println("restored")
 }
 
 func list(args []string) {

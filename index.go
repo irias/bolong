@@ -90,9 +90,9 @@ func readIndex(b *Backup) (idx *Index, err error) {
 	if b.incremental {
 		kindName = "incr"
 	}
-	path := fmt.Sprintf("%s/%s.index.%s", config.Remote, b.name, kindName)
+	path := fmt.Sprintf("%s.index.%s", b.name, kindName)
 	var f io.ReadCloser
-	f, err = os.Open(path)
+	f, err = remote.Open(path)
 	if err != nil {
 		return nil, fmt.Errorf("open index file: %s", err)
 	}

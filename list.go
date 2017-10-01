@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"io/ioutil"
 	"strings"
 )
 
@@ -14,12 +13,11 @@ type Backup struct {
 // return backups in order of timestamp
 func listBackups() ([]*Backup, error) {
 	var r []*Backup
-	l, err := ioutil.ReadDir(config.Remote)
+	l, err := remote.List()
 	if err != nil {
 		return nil, fmt.Errorf("listing remote: %s", err)
 	}
-	for _, info := range l {
-		name := info.Name()
+	for _, name := range l {
 		if strings.HasSuffix(name, ".index.full") {
 			r = append(r, &Backup{name[:len(name)-len(".index.full")], false})
 		}
