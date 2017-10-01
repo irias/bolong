@@ -23,7 +23,7 @@ index0
 = f 644 1506578834 123123123 mjl mjl 1334 path/to/another-file
 .
 
- */
+*/
 
 type File struct {
 	isDir       bool
@@ -168,32 +168,39 @@ func readIndex(b *Backup) (idx *Index, err error) {
 	return idx, scanner.Err()
 }
 
-func writeIndex(index io.Writer, idx *Index) error {
-	_, err := fmt.Fprintf(index, "index0\n%s\n", idx.previousName)
+func writeIndex(index io.Writer, idx *Index) (int, error) {
+	size := 0
+
+	n, err := fmt.Fprintf(index, "index0\n%s\n", idx.previousName)
 	if err != nil {
-		return err
+		return -1, err
 	}
+	size += n
 
 	for _, name := range idx.add {
-		_, err = fmt.Fprintf(index, "+ %s\n", name)
+		n, err = fmt.Fprintf(index, "+ %s\n", name)
 		if err != nil {
-			return err
+			return -1, err
 		}
+		size += n
 	}
 	for _, name := range idx.delete {
-		_, err = fmt.Fprintf(index, "- %s\n", name)
+		n, err = fmt.Fprintf(index, "- %s\n", name)
 		if err != nil {
-			return err
+			return -1, err
 		}
+		size += n
 	}
 	for _, f := range idx.contents {
-		_, err = fmt.Fprintf(index, "= %s\n", f.indexString())
+		n, err = fmt.Fprintf(index, "= %s\n", f.indexString())
 		if err != nil {
-			return err
+			return -1, err
 		}
+		size += n
 	}
-	_, err = fmt.Fprintf(index, ".\n")
-	return err
+	n, err = fmt.Fprintf(index, ".\n")
+	size += n
+	return size, err
 }
 
 func verifyPath(path string) error {

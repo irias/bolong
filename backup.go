@@ -95,6 +95,7 @@ func backup(args []string) {
 	check(err, "creating safe file")
 
 	dataOffset := int64(0)
+	nfiles := 0
 	filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			log.Fatalf("error walking %s: %s\n", path, err)
@@ -111,13 +112,19 @@ func backup(args []string) {
 		if relpath == ".bolong.json" || strings.HasSuffix(relpath, "/.bolong.json") {
 			return nil
 		}
-		if info.IsDir() {
+		if info.IsDir() && matchPath != "" {
 			matchPath += "/"
 		}
 		if len(includes) > 0 {
 			if !matchAny(includes, matchPath) {
 				if info.IsDir() {
+					if *verbose {
+						log.Println(`no "include" match, skipping`, matchPath)
+					}
 					return filepath.SkipDir
+				}
+				if *verbose {
+					log.Println(`no "include" match, skipping`, matchPath)
 				}
 				return nil
 			}
@@ -125,7 +132,13 @@ func backup(args []string) {
 		if len(excludes) > 0 {
 			if matchAny(excludes, matchPath) {
 				if info.IsDir() {
+					if *verbose {
+						log.Println(`"exclude" match, skipping`, matchPath)
+					}
 					return filepath.SkipDir
+				}
+				if *verbose {
+					log.Println(`"exclude" match, skipping`, matchPath)
 				}
 				return nil
 			}
@@ -147,6 +160,7 @@ func backup(args []string) {
 		}
 
 		nidx.contents = append(nidx.contents, nf)
+		nfiles += 1
 
 		if incremental {
 			of, ok := unseen[relpath]
@@ -200,13 +214,25 @@ func backup(args []string) {
 	check(err, "creating index file")
 	index, err = NewSafeWriter(index)
 	check(err, "creating safe file")
-	err = writeIndex(index, nidx)
+	indexSize, err := writeIndex(index, nidx)
 	check(err, "writing index file")
 	err = index.Close()
 	check(err, "closing index file")
 
 	if *verbose {
-		log.Printf("wrote new %s backup: %s\n", kindName, name)
+		log.Printf("new %s backup: %s\n", kindName, name)
+		addDel := ""
+		if incremental {
+			addDel = fmt.Sprintf(", +%d files, -%d files", len(nidx.add), len(nidx.delete))
+		}
+		totalSize := int64(indexSize) + dataOffset
+		size := ""
+		if totalSize > 1024*1024*1024 {
+			size = fmt.Sprintf("%.1fgb", float64(totalSize)/(1024*1024*1024))
+		} else {
+			size = fmt.Sprintf("%.1fmb", float64(totalSize)/(1024*1024))
+		}
+		log.Printf("total size %s, total files %d%s\n", size, nfiles, addDel)
 	}
 
 	if config.FullKeep > 0 || config.IncrementalForFullKeep > 0 {

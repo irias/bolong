@@ -26,7 +26,9 @@ Start with this annotated example JSON config file when creating your own config
 
 		// if this list is non-empty, only files that match one of these regular expressions will be included in the bacup. this has no effect on restore.
 		// directories always end with a slash.  paths never start with a slash. the root directory is matched as the empty string.
+		// if a directory isn't included, the entire hierarchy rooted at that directory is included, even if files would match one of the includes.
 		"include": [
+			"^$",
 			"\\.go$"
 		],
 

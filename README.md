@@ -28,7 +28,9 @@ First, create a config file to your liking, named ".bolong.json". By default, we
 		"passphrase": "She0oghoairie2Tu"
 	}
 
-For a more complete example, see bolong-example.json.txt.
+For a more complete example, see bolong-example.json.txt.  Set an explicit path for a config file like so:
+
+	./bolong -config your-config-file.json <cmd>...
 
 Now we can create a new backup of the current directory:
 
@@ -89,8 +91,8 @@ For feedback, contact Mechiel Lukkien at mechiel@ueber.net.
 - delete partial backup files on exit
 - use temp names for index files when writing, rename to final name after writing.  gives automic backups
 
-- when backing up with verbose, also show how many paths have been backed up, and total file size.
 - implement option for setting remote "path" from command-line?  so we can have one config for many directories that we want to backup.
 - for restore, on missing/invalid config file, print an example. should make restoring a lot easier in practice.
 - for restore, allow specifying paths or regexp on command-line?
 - is our behaviour correct when restoring to a directory that already has some files?  we currently fail when we try to create a file/directory that already exists.
+- include/exclude should not apply to directories (and their children files). only to files, the right directories should be restored automatically.
