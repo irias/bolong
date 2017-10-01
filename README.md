@@ -2,10 +2,15 @@ backup - tool for making backups, and restoring them
 
 # features
 
-- incremental and full backups
-- can store data in aws s3 or local filesystem (possibly network storage).  cloud storage is nice: highly available, pay for use, off-site.  we clean up old files too
+- incremental and full backups. incremental backups based on timestamp + filesize (not contents). we store permissions, user/group and permissions.
+- can store data in aws s3 or local filesystem (possibly network storage).  cloud storage is nice: highly available, pay for use, off-site.  we clean up old files too, so you won't keep paying more and more for cloud storage.
 - data is compressed, encrypted, authenticated
-- focus on performance: waiting for a restore can be troublesome
+- focus on performance: waiting for a restore can be troublesome. we can do streaming restore/backup from/to the cloud.  each backup creates a single data store, so (re)storing many small files is quick and doesn't suffer from high latency.
+
+# non-features
+
+- we don't do deduplication. quite a bit more complicated to implement. too much code for this tool.
+
 
 # example usage
 
@@ -61,6 +66,20 @@ incremental backups:
 when restoring incremental backups:
 - read the new index file.  gives us list of files we will need.  keep of track of the work we still need to do.  once empty, we quit.
 - go through the contents, restore all files the that were added in this version.  if no more work, quit. otherwise, read the next index file and restore all added files that are still in the work list.
+
+
+compression:
+we use lz4. it is very fast. ratio isn't always great, but this way we don't have to make it complicated (turning it on/off per type of file), and we never slow the backup/restore down.  native go lib available: github.com/pierrec/lz4
+
+encryption:
+we don't use pub/priv key stuff. means we would need to keep those keys around, annoying. instead we'll do a passphrase with key derivation.
+which key derivation function?  pbkdf2, scrypt, hkdf.  pbkdf2. do we need a salt? store it at the front of the index file.
+
+version
+method
+salt
+iv
+data...
 
 
 plan of attack:
