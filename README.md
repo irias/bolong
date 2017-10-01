@@ -89,7 +89,6 @@ For feedback, contact Mechiel Lukkien at mechiel@ueber.net.
 - delete partial backup files on exit
 - use temp names for index files when writing, rename to final name after writing.  gives automic backups
 
-- add vendored libs
 - when backing up with verbose, also show how many paths have been backed up, and total file size.
 - implement option for setting remote "path" from command-line?  so we can have one config for many directories that we want to backup.
 - for restore, on missing/invalid config file, print an example. should make restoring a lot easier in practice.
