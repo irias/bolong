@@ -7,13 +7,19 @@ import (
 	"io/ioutil"
 	"log"
 	"os"
+	"regexp"
 	"sort"
 	"strings"
 )
 
 func restore(args []string) {
 	fs := flag.NewFlagSet("restore", flag.ExitOnError)
+	fs.Usage = func() {
+		log.Println("usage: bolong [flags] restore [flags] destination [path-regepx ...]")
+		fs.PrintDefaults()
+	}
 	verbose := fs.Bool("verbose", false, "print restored files")
+	name := fs.String("name", "latest", "name of backup to restore")
 	err := fs.Parse(args)
 	if err != nil {
 		log.Println(err)
@@ -21,24 +27,24 @@ func restore(args []string) {
 		os.Exit(2)
 	}
 	args = fs.Args()
-
-	var target, name string
-	switch len(args) {
-	case 1:
-		target = args[0]
-		name = "latest"
-	case 2:
-		target = args[0]
-		name = args[1]
-	default:
+	if len(args) == 0 {
 		fs.Usage()
 		os.Exit(2)
 	}
+	target := args[0]
+	regexps := []*regexp.Regexp{}
+	for _, pattern := range args[1:] {
+		re, err := regexp.Compile(pattern)
+		if err != nil {
+			log.Fatalf("compiling regexp %s: %s\n", pattern, err)
+		}
+		regexps = append(regexps, re)
+	}
 
-	log.Printf("restoring %s to %s\n", name, target)
+	log.Printf("restoring %s to %s\n", *name, target)
 
 	var backups []*Backup
-	if name == "latest" {
+	if *name == "latest" {
 		backups, err = listBackups()
 		check(err, "listing backups")
 		if len(backups) == 0 {
@@ -53,7 +59,7 @@ func restore(args []string) {
 		}
 		backups = r
 	} else {
-		backups, err = findBackups(name)
+		backups, err = findBackups(*name)
 		check(err, "finding backups")
 	}
 	backup, backups := backups[0], backups[1:]
@@ -62,6 +68,9 @@ func restore(args []string) {
 
 	need := map[string]struct{}{} // files we still need to restore
 	for _, f := range idx.contents {
+		if len(regexps) > 0 && !matchAny(regexps, f.name) {
+			continue
+		}
 		need[f.name] = struct{}{}
 	}
 

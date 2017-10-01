@@ -14,6 +14,10 @@ import (
 
 func backup(args []string) {
 	fs := flag.NewFlagSet("backup", flag.ExitOnError)
+	fs.Usage = func() {
+		log.Println("usage: bolong [flags] backup [flags] directory")
+		fs.PrintDefaults()
+	}
 	verbose := fs.Bool("verbose", false, "print files being backed up")
 	err := fs.Parse(args)
 	if err != nil {

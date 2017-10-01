@@ -73,6 +73,10 @@ func findBackups(name string) ([]*Backup, error) {
 
 func list(args []string) {
 	fs := flag.NewFlagSet("list", flag.ExitOnError)
+	fs.Usage = func() {
+		log.Println("usage: bolong [flags] list")
+		fs.PrintDefaults()
+	}
 	err := fs.Parse(args)
 	if err != nil {
 		log.Println(err)

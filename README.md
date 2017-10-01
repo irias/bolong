@@ -46,7 +46,9 @@ Finally, we can restore one of the available backups. By default, the latest bac
 
 	bolong restore /path/to/restore/to
 
-Again, add the "-verbose" flag for a list of files restored.
+Again, add the "-verbose" flag for a list of files restored. You can also add regular expressions to only restore matching files.
+
+	bolong -path /myproject/ restore -name 20171001-230002 -verbose /path/to/restore/to '\.go$'
 
 
 # Compression
@@ -91,6 +93,5 @@ For feedback, contact Mechiel Lukkien at mechiel@ueber.net.
 - delete partial backup files on exit
 - use temp names for index files when writing, rename to final name after writing.  gives automic backups
 
-- for restore, allow specifying paths or regexp on command-line?
 - is our behaviour correct when restoring to a directory that already has some files?  we currently fail when we try to create a file/directory that already exists.
 - include/exclude should not apply to directories (and their children files). only to files, the right directories should be restored automatically.
