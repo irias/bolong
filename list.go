@@ -92,6 +92,10 @@ func list(args []string) {
 	l, err := listBackups()
 	check(err, "listing backups")
 	for _, b := range l {
-		fmt.Println(b.name)
+		kind := "full"
+		if b.incremental {
+			kind = "incr"
+		}
+		fmt.Println(b.name, kind)
 	}
 }
