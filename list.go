@@ -1,8 +1,13 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"strings"
+)
+
+var (
+	errNotFound = errors.New("not found")
 )
 
 type Backup struct {
@@ -52,7 +57,7 @@ func findBackups(name string) ([]*Backup, error) {
 		if !b.incremental {
 			lastFull = i
 		}
-		if b.name == name {
+		if b.name == name || (name == "latest" && i == len(l)-1) {
 			r := make([]*Backup, 0, i+1-lastFull)
 			for j := i; j >= lastFull; j-- {
 				r = append(r, l[j])
@@ -60,5 +65,5 @@ func findBackups(name string) ([]*Backup, error) {
 			return r, nil
 		}
 	}
-	return nil, fmt.Errorf("not found")
+	return nil, errNotFound
 }

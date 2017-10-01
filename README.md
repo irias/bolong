@@ -75,13 +75,9 @@ encryption:
 we don't use pub/priv key stuff. means we would need to keep those keys around, annoying. instead we'll do a passphrase with key derivation.
 which key derivation function?  pbkdf2, scrypt, hkdf.  pbkdf2. do we need a salt? store it at the front of the index file.
 
-
-plan of attack:
-- then cli flags for include/exclude and the incremental/full intervals
-- then cleaning up old backups
-- done
-
 todo:
+- split main.go into backup.go and restore.go
+- write usage godoc
 - put name of application in filenames, to help people trying to find out what the filetype is
 - delete partial backup files on exit
 - use temp names for index files when writing, rename to final name after writing.  gives automic backups

@@ -10,6 +10,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"time"
@@ -18,15 +19,22 @@ import (
 var (
 	configPath = flag.String("config", "", "path to config file")
 	config     struct {
-		Kind     string
-		Local    string
+		Kind  string
+		Local struct {
+			Path string
+		}
 		GoogleS3 struct {
 			AccessKey,
 			Secret,
 			Bucket,
-			Path      string
+			Path string
 		}
-		Passphrase string
+		Include                []string
+		Exclude                []string
+		IncrementalsPerFull    int
+		FullKeep               int
+		IncrementalForFullKeep int
+		Passphrase             string
 	}
 	remote Remote
 )
@@ -61,15 +69,16 @@ func main() {
 	}
 	f, err := os.Open(*configPath)
 	check(err, "opening config file")
+	// xxx should parse strictly, throwing error for unrecognized fields..
 	err = json.NewDecoder(f).Decode(&config)
 	check(err, "parsing config file")
 
 	switch config.Kind {
 	case "local":
-		if config.Local == "" {
+		if config.Local.Path == "" {
 			log.Fatal(`field "local" must be set for kind "local"`)
 		}
-		path := config.Local
+		path := config.Local.Path
 		if !strings.HasSuffix(path, "/") {
 			path += "/"
 		}
@@ -127,7 +136,6 @@ func findConfigPath() {
 
 func backup(args []string) {
 	fs := flag.NewFlagSet("backup", flag.ExitOnError)
-	incremental := fs.Bool("incremental", false, "do incremental backup instead of full backup")
 	verbose := fs.Bool("verbose", false, "print files being backed up")
 	err := fs.Parse(args)
 	if err != nil {
@@ -147,8 +155,21 @@ func backup(args []string) {
 		os.Exit(2)
 	}
 
-	if *verbose {
-		log.Println("backuping up", dir)
+	includes := []*regexp.Regexp{}
+	for _, s := range config.Include {
+		re, err := regexp.Compile(s)
+		if err != nil {
+			log.Fatalf("bad include regexp %s: %s", s, err)
+		}
+		includes = append(includes, re)
+	}
+	excludes := []*regexp.Regexp{}
+	for _, s := range config.Exclude {
+		re, err := regexp.Compile(s)
+		if err != nil {
+			log.Fatalf("bad exclude regexp %s: %s", s, err)
+		}
+		excludes = append(excludes, re)
 	}
 
 	info, err := os.Stat(dir)
@@ -167,18 +188,23 @@ func backup(args []string) {
 	nidx := &Index{}
 	var oidx *Index
 	unseen := map[string]*File{}
-	if *incremental {
-		backups, err := listBackups()
-		check(err, "listing backups")
-		if len(backups) == 0 {
-			log.Fatal("no previous backups")
-		}
-		b := backups[len(backups)-1]
-		nidx.previousName = b.name
-		oidx, err = readIndex(b)
-		check(err, "parsing previous index file")
-		for _, f := range oidx.contents {
-			unseen[f.name] = f
+	incremental := false
+	if config.IncrementalsPerFull > 0 {
+		// backups will be all incremental backups (most recent first), leading to the first full backup (also included)
+		backups, err := findBackups("latest")
+		if err == nil {
+			incremental = len(backups)-1 < config.IncrementalsPerFull
+			b := backups[0]
+			nidx.previousName = b.name
+			oidx, err = readIndex(b)
+			check(err, "parsing previous index file")
+			for _, f := range oidx.contents {
+				unseen[f.name] = f
+			}
+		} else if err == errNotFound {
+			// do first full
+		} else {
+			log.Fatalln("listing backups for determing full or incremental backup:", err)
 		}
 	}
 
@@ -200,11 +226,31 @@ func backup(args []string) {
 			return nil
 		}
 		relpath := path[len(dir):]
+		matchPath := relpath
 		if relpath == "" {
 			relpath = "."
 		}
 		if relpath == ".bolong.json" || strings.HasSuffix(relpath, "/.bolong.json") {
 			return nil
+		}
+		if info.IsDir() {
+			matchPath += "/"
+		}
+		if len(includes) > 0 {
+			if !matchAny(includes, matchPath) {
+				if info.IsDir() {
+					return filepath.SkipDir
+				}
+				return nil
+			}
+		}
+		if len(excludes) > 0 {
+			if matchAny(excludes, matchPath) {
+				if info.IsDir() {
+					return filepath.SkipDir
+				}
+				return nil
+			}
 		}
 
 		size := int64(0)
@@ -224,7 +270,7 @@ func backup(args []string) {
 
 		nidx.contents = append(nidx.contents, nf)
 
-		if *incremental {
+		if incremental {
 			of, ok := unseen[relpath]
 			if ok {
 				delete(unseen, relpath)
@@ -255,7 +301,7 @@ func backup(args []string) {
 		return nil
 	})
 
-	if *incremental {
+	if incremental {
 		for _, f := range unseen {
 			nidx.delete = append(nidx.delete, f.name)
 		}
@@ -265,8 +311,10 @@ func backup(args []string) {
 	check(err, "closing data file")
 
 	kind := "full"
-	if *incremental {
+	kindName := "full"
+	if incremental {
 		kind = "incr"
+		kindName = "incremental"
 	}
 	indexPath := fmt.Sprintf("%s.index.%s", name, kind)
 	var index io.WriteCloser
@@ -280,8 +328,70 @@ func backup(args []string) {
 	check(err, "closing index file")
 
 	if *verbose {
-		log.Println("wrote new backup:", name)
+		log.Printf("wrote new %s backup: %s\n", kindName, name)
 	}
+
+	if config.FullKeep > 0 || config.IncrementalForFullKeep > 0 {
+		backups, err := listBackups()
+		check(err, "listing backups for cleaning up old backups")
+
+		fullSeen := 0
+		for i := len(backups) - 1; i > 0; i-- {
+			if !backups[i].incremental {
+				fullSeen += 1
+			}
+			if fullSeen >= config.IncrementalForFullKeep {
+				for j := 0; j < i; j++ {
+					if backups[j].incremental {
+						if *verbose {
+							log.Println("cleaning up old incremental backup", backups[j].name)
+						}
+						err = remote.Delete(backups[j].name + ".data")
+						if err != nil {
+							log.Println("removing old incremental backup:", err)
+						}
+						err = remote.Delete(backups[j].name + ".index.incr")
+						if err != nil {
+							log.Println("removing old incremental backup:", err)
+						}
+					}
+				}
+				break
+			}
+		}
+
+		fullSeen = 0
+		for i := len(backups) - 1; i > 0; i-- {
+			if !backups[i].incremental {
+				fullSeen += 1
+			}
+			if fullSeen >= config.FullKeep {
+				for j := 0; j < i; j++ {
+					if *verbose {
+						log.Println("cleaning up old full backup", backups[j].name)
+					}
+					err = remote.Delete(backups[j].name + ".data")
+					if err != nil {
+						log.Println("removing old full backup:", err)
+					}
+					err = remote.Delete(backups[j].name + ".index.full")
+					if err != nil {
+						log.Println("removing old full backup:", err)
+					}
+				}
+				break
+			}
+		}
+	}
+}
+
+func matchAny(l []*regexp.Regexp, s string) bool {
+	for _, re := range l {
+		if re.FindStringIndex(s) != nil {
+			return true
+		}
+	}
+	return false
 }
 
 func fileChanged(old, new *File) bool {
@@ -462,7 +572,9 @@ func restore(args []string) {
 		backups = backups[1:]
 		idx, err = readIndex(backup)
 		check(err, "parsing next index")
-		log.Println("next backup loaded", backup.name, backup.incremental)
+		if *verbose {
+			log.Println("next incremental backup loaded", backup.name, backup.incremental)
+		}
 	}
 }
 

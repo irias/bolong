@@ -8,13 +8,13 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"time"
 	"net/url"
+	"time"
 )
 
 type GoogleS3 struct {
-	bucket string	// no slashes
-	path string	// starts and ends with slash
+	bucket string // no slashes
+	path   string // starts and ends with slash
 }
 
 var _ Remote = &GoogleS3{}
@@ -29,7 +29,7 @@ func (r *GoogleS3) authorize(msg string) string {
 
 func (r *GoogleS3) List() (names []string, err error) {
 	client := &http.Client{}
-	req, err := http.NewRequest("GET", "https://storage.googleapis.com/" + r.bucket + "/?prefix=" + url.QueryEscape(r.path[1:]), nil)
+	req, err := http.NewRequest("GET", "https://storage.googleapis.com/"+r.bucket+"/?prefix="+url.QueryEscape(r.path[1:]), nil)
 	if err != nil {
 		return nil, err
 	}
@@ -51,7 +51,7 @@ func (r *GoogleS3) List() (names []string, err error) {
 	}
 	if resp.StatusCode != 200 {
 		resp.Body.Close()
-		return nil, fmt.Errorf("listing %s: status code not 200 but %d", "/" + r.bucket + r.path, resp.StatusCode)
+		return nil, fmt.Errorf("listing %s: status code not 200 but %d", "/"+r.bucket+r.path, resp.StatusCode)
 	}
 
 	var list struct {
@@ -74,7 +74,7 @@ func (r *GoogleS3) List() (names []string, err error) {
 
 func (xr *GoogleS3) Open(path string) (r io.ReadCloser, err error) {
 	client := &http.Client{}
-	req, err := http.NewRequest("GET", "https://storage.googleapis.com/"+xr.bucket + xr.path+path, nil)
+	req, err := http.NewRequest("GET", "https://storage.googleapis.com/"+xr.bucket+xr.path+path, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -120,7 +120,7 @@ func (x *s3writer) Close() error {
 
 func (r *GoogleS3) Create(path string) (w io.WriteCloser, err error) {
 	client := &http.Client{}
-	req, err := http.NewRequest("PUT", "https://storage.googleapis.com/"+r.bucket + r.path+path, nil)
+	req, err := http.NewRequest("PUT", "https://storage.googleapis.com/"+r.bucket+r.path+path, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -161,7 +161,7 @@ func (r *GoogleS3) Create(path string) (w io.WriteCloser, err error) {
 
 func (r *GoogleS3) Delete(path string) (err error) {
 	client := &http.Client{}
-	req, err := http.NewRequest("DELETE", "https://storage.googleapis.com/"+r.bucket + r.path+path, nil)
+	req, err := http.NewRequest("DELETE", "https://storage.googleapis.com/"+r.bucket+r.path+path, nil)
 	if err != nil {
 		return err
 	}
