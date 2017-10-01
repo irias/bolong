@@ -1,82 +1,97 @@
-backup - tool for making backups, and restoring them
+Bolong is a simple, secure and fast command-line backup and restore tool.
 
-# features
+Features:
+- Full and incremental backups. You can configure how many incremental backups are made before a full backup is created. Incremental backups only store files that have different size/mtime/permissions compared to the previous backup. We don't compare the file contents.
+- Stores data either in the "local" file system (which can be a mounted network disk) or in Google's S3 storage clone (not AWS, only Google does proper streaming uploads).
+- Compression with lz4. Compression rate is not too great, but it's very fast, so won't slow restores down.
+- Encryption and authenticated data. A cloud storage provider cannot read your data, and cannot tamper with it.
 
-- incremental and full backups. incremental backups based on timestamp + filesize (not contents). we store permissions, user/group and permissions.
-- can store data in aws s3 or local filesystem (possibly network storage).  cloud storage is nice: highly available, pay for use, off-site.  we clean up old files too, so you won't keep paying more and more for cloud storage.
-- data is compressed, encrypted, authenticated
-- focus on performance: waiting for a restore can be troublesome. we can do streaming restore/backup from/to the cloud.  each backup creates a single data store, so (re)storing many small files is quick and doesn't suffer from high latency.
-
-# non-features
-
-- we don't do deduplication. quite a bit more complicated to implement. too much code for this tool.
+Non-features:
+- Deduplication. It's a nice feature, but too much code/complexity for our purposes. Simple backups are more likely to be reliable backups.
 
 
-# example usage
+# Examples
 
-backup -remote /n/backups -key backup.key list
-backup -remote /n/backups -key backup.key backup -exclude '*.jpg' -incremental 30 -max-full 12 -max-incremental 2 .
-backup -remote /n/backups -key backup.key restore -exclude '*.png' <backup-id> .
+First, create a config file to your liking, named ".bolong.json". By default, we look in the current directory a file by that name, trying the parent directory, and its parent etc, until it finds one. Here is an example:
 
+	{
+		"kind": "googles3",
+		"googles3": {
+			"accessKey": "GOOGLTEST123456789",
+			"secret": "bm90IGEgcmVhbCBrZXkuIG5pY2UgdHJ5IHRob3VnaCBeXg==",
+			"bucket": "your-bucket-name",
+			"path": "/"
+		},
+		"incrementalsPerFull": 6,
+		"fullKeep": 8,
+		"incrementalForFullKeep": 4,
+		"passphrase": "She0oghoairie2Tu"
+	}
 
+For a more complete example, see bolong-example.json.txt.
 
-name.index.incr
-name.data
-name.index.full
-name.data
+Now we can create a new backup of the current directory:
 
-list dir
-get all the names.
-should be in incremental order when sorted by name. so just timestamped.
-backup id's are the name-part.
-just looking at the files tells you what which files would need to be retrieved.
-the index files have a full listing you would get when doing an extraction, including permission, if it's a dir, username/groupname.
-index file is encrypted too.
-index file contains offset into data file.
-so data is just all the content appended.
-when restoring, we can fetch the data streaming, and write the necessary files as we go.  we begin at the newest file.  we might not even need have to retrieve the full data file.
+	bolong backup
 
-example index file:
+If all is well, it just worked, nothing is printed. If you are running these commands manually, you might want to add the "-verbose" flag. So you can see what is backed up.
 
-index0
-20170101-122334
-- path/removed
-+ path/to/file
-= d 755 1506578834 0 mjl mjl 0 path/to
-= f 644 1506578834 1234 mjl mjl 0 path/to/file
-= f 644 1506578834 100 mjl mjl 1234 path/to/another-file
-= f 644 1506578834 123123123 mjl mjl 1334 path/to/another-file
-.
+Next, list the available backups:
 
+	bolong list
 
-"." is included
-".." cannot occur as path element
-paths cannot start with a slash
-paths are normalized to contain just one slash
+Finally, we can restore one of the available backups. By default, the latest backup is restored:
+
+	bolong restore /path/to/restore/to
+
+Again, add the "-verbose" flag for a list of files restored.
 
 
-incremental backups:
-- read last index
-- walk through tree
-- remove paths that are gone
-- add files that are new/modified
-- keep track of the additions/removals, also put them in the index file?
-- also put the filename of the previous index file in the new index file
+# Compression
 
-when restoring incremental backups:
-- read the new index file.  gives us list of files we will need.  keep of track of the work we still need to do.  once empty, we quit.
-- go through the contents, restore all files the that were added in this version.  if no more work, quit. otherwise, read the next index file and restore all added files that are still in the work list.
+We use lz4 to compress all data. It so fast you can apply it to all files, so there is no need to complicate the code and configuration with applying compression selectively. Decompression is also very fast, so it won't slow down your restores.  The price we pay is a compression ratio that isn't too great.
+
+# Encryption
+
+You don't want a cloud storage provider being able to read your backups. Or tamper with them. All backed up files are encrypted, with an AEAD mode/cipher, meaning it is also authenticated, and attempts to modify data are detected.
+
+Your files are protected by a passphrase. Each backed up file starts with a 32 byte salt. For each file, a key is derived using PBKDF2.
+
+# File format
+
+Each backup is made of two files:
+
+1. Data file, containing the contents of all files stored in this backup.
+2. Index file, listing all files and meta information in this backup (file name, regular/directory, permissions, mtime, owner/group, and offset into data file. An incremental backup lists all files that would be restored for a restore operation, not only the modified files.
+
+Each file starts with a 32 byte salt. Followed by data in the DARE format (Data at Rest, see https://github.com/minio/sio).
+
+Backups, and the file names are named after the time they were initiated. A backup name has the form YYYYMMDD-hhmmdd. The file names have ".data" and either ".index.full" or ".index.incr" appended.
+
+# License
+
+This software is released under an MIT license. See LICENSE.MD.
+
+# Dependencies
+
+All dependencies are vendored in (include) in this repositories:
+
+	https://github.com/pierrec/lz4 (BSD license)
+	https://github.com/minio/sio (Apache license)
+
+# Contact
+
+For feedback, contact Mechiel Lukkien at mechiel@ueber.net.
 
 
-compression:
-we use lz4. it is very fast. ratio isn't always great, but this way we don't have to make it complicated (turning it on/off per type of file), and we never slow the backup/restore down.  native go lib available: github.com/pierrec/lz4
+# Todo
 
-encryption:
-we don't use pub/priv key stuff. means we would need to keep those keys around, annoying. instead we'll do a passphrase with key derivation.
-which key derivation function?  pbkdf2, scrypt, hkdf.  pbkdf2. do we need a salt? store it at the front of the index file.
-
-todo:
-- write usage godoc
-- put name of application in filenames, to help people trying to find out what the filetype is
 - delete partial backup files on exit
 - use temp names for index files when writing, rename to final name after writing.  gives automic backups
+
+- add vendored libs
+- when backing up with verbose, also show how many paths have been backed up, and total file size.
+- implement option for setting remote "path" from command-line?  so we can have one config for many directories that we want to backup.
+- for restore, on missing/invalid config file, print an example. should make restoring a lot easier in practice.
+- for restore, allow specifying paths or regexp on command-line?
+- is our behaviour correct when restoring to a directory that already has some files?  we currently fail when we try to create a file/directory that already exists.

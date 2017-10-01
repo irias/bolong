@@ -10,6 +10,21 @@ import (
 	"time"
 )
 
+/*
+example index file:
+
+index0
+20170101-122334
+- path/removed
++ path/to/file
+= d 755 1506578834 0 mjl mjl 0 path/to
+= f 644 1506578834 1234 mjl mjl 0 path/to/file
+= f 644 1506578834 100 mjl mjl 1234 path/to/another-file
+= f 644 1506578834 123123123 mjl mjl 1334 path/to/another-file
+.
+
+ */
+
 type File struct {
 	isDir       bool
 	permissions os.FileMode

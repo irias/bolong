@@ -1,0 +1,49 @@
+Start with this annotated example JSON config file when creating your own config file:
+
+	{
+		 // "kind" must be either "googles3" or "local". for "local", field "local" below is used. for "googles3", the "googles3" field. simple.
+		"kind": "googles3",
+
+
+		"local": {
+			// where to store backup files on the local file system (which could be mounted over the network)
+			"path": "../x"
+		},
+
+
+		"googles3": {
+			// for your account
+			"accessKey": "GOOGLTEST123456789",
+			"secret": "bm90IGEgcmVhbCBrZXkuIG5pY2UgdHJ5IHRob3VnaCBeXg==",
+
+			// create your bucket first, we won't create it for you
+			"bucket": "your-bucket-name",
+
+			// directory within your backup to store the files in.
+			// it should be either "/", or any other path that starts and ends with a slash.
+			"path": "/optional/subdir/"
+		},
+
+		// if this list is non-empty, only files that match one of these regular expressions will be included in the bacup. this has no effect on restore.
+		// directories always end with a slash.  paths never start with a slash. the root directory is matched as the empty string.
+		"include": [
+			"\\.go$"
+		],
+
+		// similar to "include", but if a path matches one of these regular expressions, it will not be included in the backup (even if the path matches on of the "include"s).
+		"exclude": [
+			"\\.png$"
+		],
+
+		// how many incrementals will be created before doing a full backup again. for a weekly full backup, set this to 6.
+		"incrementalsPerFull": 2,
+
+		// how many full backups to keep.  after each backup, older backups will be cleaned up.
+		"fullKeep": 5,
+
+		// for how many full backups we keep incremental backups.
+		"incrementalForFullKeep": 3,
+
+		// the passphrase used to encrypt the backup files (after key derivation, with per-file salt).
+		"passphrase": "your secret keyphrase"
+	}
