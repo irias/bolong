@@ -8,6 +8,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/pierrec/lz4"
 )
 
 type File struct {
@@ -95,6 +97,7 @@ func readIndex(b *Backup) (idx *Index, err error) {
 	if err != nil {
 		return nil, fmt.Errorf("open index file: %s", err)
 	}
+	lzr := lz4.NewReader(f)
 	defer func() {
 		nerr := f.Close()
 		if nerr != nil && err == nil {
@@ -106,7 +109,7 @@ func readIndex(b *Backup) (idx *Index, err error) {
 
 	idx = &Index{}
 
-	scanner := bufio.NewScanner(f)
+	scanner := bufio.NewScanner(lzr)
 	if !scanner.Scan() {
 		return nil, fmt.Errorf("empty index file")
 	}

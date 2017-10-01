@@ -11,6 +11,10 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+	"sort"
+	"io/ioutil"
+
+	"github.com/pierrec/lz4"
 )
 
 var (
@@ -147,10 +151,11 @@ func backup(args []string) {
 		}
 	}
 
-	name := time.Now().Format("20060201-150405")
+	name := time.Now().Format("20060102-150405")
 	dataPath := fmt.Sprintf("%s/%s.data", config.Remote, name)
 	data, err := os.Create(dataPath)
 	check(err, "creating data file")
+	lzdata := lz4.NewWriter(data)
 
 	dataOffset := int64(0)
 	filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
@@ -196,7 +201,7 @@ func backup(args []string) {
 		}
 
 		if !nf.isDir {
-			err := store(path, nf.size, data)
+			err := store(path, nf.size, lzdata)
 			if err != nil {
 				log.Fatalf("writing %s: %s\n", path, err)
 			}
@@ -213,6 +218,8 @@ func backup(args []string) {
 		}
 	}
 
+	err = lzdata.Close()
+	check(err, "closing data file")
 	err = data.Close()
 	check(err, "closing data file")
 
@@ -223,8 +230,11 @@ func backup(args []string) {
 	indexPath := fmt.Sprintf("%s/%s.index.%s", config.Remote, name, kind)
 	index, err := os.Create(indexPath)
 	check(err, "creating index file")
-	err = writeIndex(index, nidx)
+	lzindex := lz4.NewWriter(index)
+	err = writeIndex(lzindex, nidx)
 	check(err, "writing index file")
+	err = lzindex.Close()
+	check(err, "closing lz4 index file")
 	err = index.Close()
 	check(err, "closing index file")
 
@@ -238,21 +248,25 @@ func fileChanged(old, new *File) bool {
 	return old.isDir != new.isDir || old.size != new.size || old.mtime.Unix() != new.mtime.Unix() || old.permissions != new.permissions || old.user != new.user || old.group != new.group
 }
 
-func store(path string, size int64, data io.Writer) error {
+func store(path string, size int64, data io.Writer) (err error) {
 	f, err := os.Open(path)
 	if err != nil {
 		return err
 	}
+	defer func() {
+		err2 := f.Close()
+		if err == nil {
+			err = err2
+		}
+	}()
 	n, err := io.Copy(data, f)
 	if err != nil {
-		f.Close()
 		return err
 	}
 	if n != size {
-		f.Close()
 		return fmt.Errorf("expected to write %d bytes, only wrote %d", size, n)
 	}
-	return f.Close()
+	return
 }
 
 func restore(args []string) {
@@ -288,7 +302,7 @@ func restore(args []string) {
 			log.Fatal("no backups available")
 		}
 		var r []*Backup
-		for i := len(backups) - 1; i >= 0; i-- {
+		for i := len(backups)-1; i >= 0; i-- {
 			r = append(r, backups[i])
 			if !backups[i].incremental {
 				break
@@ -307,6 +321,7 @@ func restore(args []string) {
 	for _, f := range idx.contents {
 		need[f.name] = struct{}{}
 	}
+
 
 	err = os.MkdirAll(target, 0777)
 	if err != nil && !os.IsExist(err) {
@@ -337,10 +352,19 @@ func restore(args []string) {
 		if len(restores) > 0 {
 			dataPath := fmt.Sprintf("%s/%s.data", config.Remote, backup.name)
 			log.Println("opening data file", dataPath)
-			data, err := os.Open(dataPath)
+			lzdata, err := os.Open(dataPath)
 			check(err, "open data file")
+			data := lz4.NewReader(lzdata)
 
-			// xxx should sort the restores by dataOffset, then read through the data, then restores as the files come along
+			sort.Slice(restores, func(i, j int) bool {
+				// make sure directories are created in right order
+				if restores[i].dataOffset == restores[j].dataOffset {
+					return restores[i].name < restores[j].name
+				}
+				return restores[i].dataOffset < restores[j].dataOffset
+			})
+
+			offset := int64(0)
 			for _, file := range restores {
 				tpath := target + file.name
 				if file.isDir {
@@ -353,16 +377,21 @@ func restore(args []string) {
 					continue
 				}
 
+				if file.dataOffset > offset {
+					_, err := io.Copy(ioutil.Discard, &io.LimitedReader{R: data, N: file.dataOffset - offset})
+					check(err, "skipping through data")
+					offset = file.dataOffset
+				}
+
 				f, err := os.Create(tpath)
 				check(err, "restoring file")
 				log.Printf("restoring file %s, dataOffset %d, size %d\n", file.name, file.dataOffset, file.size)
-				_, err = data.Seek(file.dataOffset, 0)
-				check(err, "seeking in data file")
 				r := &io.LimitedReader{R: data, N: file.size}
 				n, err := io.Copy(f, r)
 				if n != file.size {
 					log.Fatalf("short file contents for file %s: expected to write %d, but wrote %d", file.name, file.size, n)
 				}
+				offset += file.size
 				check(err, "restoring contents of file")
 				err = f.Close()
 				check(err, "closing restored file")
@@ -372,7 +401,7 @@ func restore(args []string) {
 				check(err, "setting mtimd/atime on restored file")
 			}
 
-			err = data.Close()
+			err = lzdata.Close()
 			check(err, "closing data file")
 		}
 
