@@ -91,7 +91,6 @@ For feedback, contact Mechiel Lukkien at mechiel@ueber.net.
 - delete partial backup files on exit
 - use temp names for index files when writing, rename to final name after writing.  gives automic backups
 
-- for restore, on missing/invalid config file, print an example. should make restoring a lot easier in practice.
 - for restore, allow specifying paths or regexp on command-line?
 - is our behaviour correct when restoring to a directory that already has some files?  we currently fail when we try to create a file/directory that already exists.
 - include/exclude should not apply to directories (and their children files). only to files, the right directories should be restored automatically.

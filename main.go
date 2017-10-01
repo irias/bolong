@@ -73,7 +73,8 @@ func main() {
 			config.Local.Path = *remotePath
 		}
 		if config.Local.Path == "" {
-			log.Fatal(`field "local" must be set for kind "local"`)
+			log.Print(`field "local" must be set for kind "local"`)
+			printExampleConfig()
 		}
 		path := config.Local.Path
 		if !strings.HasSuffix(path, "/") {
@@ -85,7 +86,8 @@ func main() {
 			config.GoogleS3.Path = *remotePath
 		}
 		if config.GoogleS3.AccessKey == "" || config.GoogleS3.Secret == "" || config.GoogleS3.Bucket == "" || config.GoogleS3.Path == "" {
-			log.Fatal(`fields "googles3.accessKey", "googles3.secret", googles3.bucket" and  "googles3.path" must be set`)
+			log.Print(`fields "googles3.accessKey", "googles3.secret", googles3.bucket" and  "googles3.path" must be set`)
+			printExampleConfig()
 		}
 		path := config.GoogleS3.Path
 		if !strings.HasPrefix(path, "/") || !strings.HasSuffix(path, "/") {
@@ -93,7 +95,8 @@ func main() {
 		}
 		remote = &GoogleS3{config.GoogleS3.Bucket, path}
 	case "":
-		log.Fatal(`missing field "kind", must be "local" or "googles3"`)
+		log.Print(`missing field "kind", must be "local" or "googles3"`)
+		printExampleConfig()
 	default:
 		log.Fatalf(`unknown remote kind "%s"`, config.Kind)
 	}
@@ -113,6 +116,22 @@ func main() {
 	}
 }
 
+func printExampleConfig() {
+	log.Print(`
+example config file:
+{
+	"kind": "googles3",
+	"googles3": {
+		"accessKey": "GOOGLTEST123456789",
+		"secret": "bm90IGEgcmVhbCBrZXkuIG5pY2UgdHJ5IHRob3VnaCBeXg==",
+		"bucket": "your-bucket-name",
+		"path": "/projectname/"
+	}
+}
+`)
+	os.Exit(2)
+}
+
 func findConfigPath() {
 	dir, err := os.Getwd()
 	check(err, "looking for config file in current working directory")
@@ -124,11 +143,13 @@ func findConfigPath() {
 			return
 		}
 		if !os.IsNotExist(err) {
-			log.Fatal("cannot find a .bolong.json up in directory hierarchy")
+			log.Print("cannot find a .bolong.json up in directory hierarchy")
+			printExampleConfig()
 		}
 		ndir := path.Dir(dir)
 		if ndir == dir {
-			log.Fatal("cannot find a .bolong.json up in directory hierarchy")
+			log.Print("cannot find a .bolong.json up in directory hierarchy")
+			printExampleConfig()
 		}
 		dir = ndir
 	}
