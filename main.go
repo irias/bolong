@@ -11,6 +11,7 @@ import (
 
 var (
 	configPath = flag.String("config", "", "path to config file")
+	remotePath = flag.String("path", "", "path at remote storage, overrides config file")
 	config     struct {
 		Kind  string
 		Local struct {
@@ -46,9 +47,9 @@ func main() {
 	log.SetFlags(0)
 	flag.Usage = func() {
 		log.Println("usage:")
-		log.Println("\tbackup [-config config.json] backup [flags] [directory]")
-		log.Println("\tbackup [-config config.json] restore [flags] destination [backup-id]")
-		log.Println("\tbackup [-config config.json] list")
+		log.Println("\tbackup [-config config.json] [-path path] backup [flags] [directory]")
+		log.Println("\tbackup [-config config.json] [-path path] restore [flags] destination [backup-id]")
+		log.Println("\tbackup [-config config.json] [-path path] list")
 	}
 	flag.Parse()
 	args := flag.Args()
@@ -68,6 +69,9 @@ func main() {
 
 	switch config.Kind {
 	case "local":
+		if *remotePath != "" {
+			config.Local.Path = *remotePath
+		}
 		if config.Local.Path == "" {
 			log.Fatal(`field "local" must be set for kind "local"`)
 		}
@@ -77,6 +81,9 @@ func main() {
 		}
 		remote = &Local{path}
 	case "googles3":
+		if *remotePath != "" {
+			config.GoogleS3.Path = *remotePath
+		}
 		if config.GoogleS3.AccessKey == "" || config.GoogleS3.Secret == "" || config.GoogleS3.Bucket == "" || config.GoogleS3.Path == "" {
 			log.Fatal(`fields "googles3.accessKey", "googles3.secret", googles3.bucket" and  "googles3.path" must be set`)
 		}
