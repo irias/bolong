@@ -2,7 +2,10 @@ package main
 
 import (
 	"errors"
+	"flag"
 	"fmt"
+	"log"
+	"os"
 	"strings"
 )
 
@@ -66,4 +69,25 @@ func findBackups(name string) ([]*Backup, error) {
 		}
 	}
 	return nil, errNotFound
+}
+
+func list(args []string) {
+	fs := flag.NewFlagSet("list", flag.ExitOnError)
+	err := fs.Parse(args)
+	if err != nil {
+		log.Println(err)
+		fs.Usage()
+		os.Exit(2)
+	}
+	args = fs.Args()
+	if len(args) != 0 {
+		fs.Usage()
+		os.Exit(2)
+	}
+
+	l, err := listBackups()
+	check(err, "listing backups")
+	for _, b := range l {
+		fmt.Println(b.name)
+	}
 }
