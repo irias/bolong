@@ -168,13 +168,18 @@ func backup(args []string) {
 				whitelist = append(whitelist, matchPath)
 			}
 			if !match && !info.IsDir() {
+				keep := false
 				for _, white := range whitelist {
-					if !strings.HasPrefix(matchPath, white) {
-						if *verbose {
-							log.Println(`no "include" match, skipping`, matchPath)
-						}
-						return nil
+					if strings.HasPrefix(matchPath, white) {
+						keep = true
+						break
 					}
+				}
+				if !keep {
+					if *verbose {
+						log.Println(`no "include" match, skipping`, matchPath)
+					}
+					return nil
 				}
 			}
 		}

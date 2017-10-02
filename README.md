@@ -9,6 +9,9 @@ Features:
 Non-features:
 - Deduplication. It's a nice feature, but too much code/complexity for our purposes. Simple backups are more likely to be reliable backups.
 
+Bugs:
+- Symlinks cannot be backed up properly. Symlinks to files will be backed up as the file pointed to, but not restored as a symlink. Symlinks to directories will result in an error, for now you must exclude them from backups.
+
 
 # Examples
 
@@ -92,3 +95,4 @@ For feedback, contact Mechiel Lukkien at mechiel@ueber.net.
 
 - is our behaviour correct when restoring to a directory that already has some files?  we currently fail when we try to create a file/directory that already exists.
 - store/restore owner/group of files
+- do something for symlinks
