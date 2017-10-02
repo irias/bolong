@@ -134,7 +134,8 @@ example config file:
 		"secret": "bm90IGEgcmVhbCBrZXkuIG5pY2UgdHJ5IHRob3VnaCBeXg==",
 		"bucket": "your-bucket-name",
 		"path": "/projectname/"
-	}
+	},
+	"passphrase": "your secret passphrase"
 }
 `)
 	os.Exit(2)
