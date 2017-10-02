@@ -90,8 +90,7 @@ For feedback, contact Mechiel Lukkien at mechiel@ueber.net.
 
 # Todo
 
-- delete partial remote backup files on exit.
-
 - include/exclude should not apply to directories (and their children files). only to files, the right directories should be restored automatically.
+- user/group in backups. store them.  restore them.
 
 - is our behaviour correct when restoring to a directory that already has some files?  we currently fail when we try to create a file/directory that already exists.

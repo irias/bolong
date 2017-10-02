@@ -6,9 +6,11 @@ import (
 	"io"
 	"log"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"regexp"
 	"strings"
+	"syscall"
 	"time"
 )
 
@@ -90,11 +92,51 @@ func backup(args []string) {
 		}
 	}
 
+	partialpaths := make(chan string)
+	cleanup := make(chan os.Signal)
+	signal.Notify(cleanup, syscall.SIGINT, syscall.SIGTERM)
+	go func() {
+		var paths []string
+		cleaning := false
+		for {
+			select {
+			case path := <-partialpaths:
+				if path == "" {
+					paths = nil
+				} else {
+					paths = append(paths, path)
+				}
+			case <-cleanup:
+				if cleaning {
+					log.Println("signal while cleaning up, quitting")
+					os.Exit(1)
+				}
+				cleaning = true
+				done := make(chan struct{})
+				for _, path := range paths {
+					go func(path string) {
+						log.Println("cleaning up remote path", path)
+						err := remote.Delete(path)
+						if err != nil {
+							log.Println("failed to cleanup remote path:", err)
+						}
+						done <- struct{}{}
+					}(path)
+				}
+				for _ = range paths {
+					<-done
+				}
+				os.Exit(1)
+			}
+		}
+	}()
+
 	name := time.Now().UTC().Format("20060102-150405")
 	dataPath := fmt.Sprintf("%s.data", name)
 	var data io.WriteCloser
 	data, err = remote.Create(dataPath)
 	check(err, "creating data file")
+	partialpaths <- dataPath
 	data, err = NewSafeWriter(data)
 	check(err, "creating safe file")
 
@@ -216,6 +258,7 @@ func backup(args []string) {
 	var index io.WriteCloser
 	index, err = remote.Create(indexPath + ".tmp")
 	check(err, "creating index file")
+	partialpaths <- indexPath + ".tmp"
 	index, err = NewSafeWriter(index)
 	check(err, "creating safe file")
 	indexSize, err := writeIndex(index, nidx)
@@ -224,6 +267,7 @@ func backup(args []string) {
 	check(err, "closing index file")
 	err = remote.Rename(indexPath+".tmp", indexPath)
 	check(err, "moving temp index file into place")
+	partialpaths <- "" // signal that we're done
 
 	if *verbose {
 		log.Printf("new %s backup: %s\n", kindName, name)
