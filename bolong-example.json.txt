@@ -28,13 +28,15 @@ Start with this annotated example JSON config file when creating your own config
 		// the paths matched against your regexp can be directories or regular files.  directories end with a slash, expect the root directory, which is matched as the empty string. if a directory matches, all children are whitelisted.  if a file matches, it is included.  directories that don't match are still included, files that don't match are not included.
 		// if a directory or file also matches an "exclude" (below), the file/directory is not included. so, includes are evaluated first, but excludes are also always evaluated for each path.
 		"include": [
-			"^$",
+			"^testdata/$",
 			"\\.go$"
 		],
 
 		// similar to "include", but if a path matches one of these regular expressions, it will not be included in the backup (even if the path matches on of the "include"s).
 		"exclude": [
-			"\\.png$"
+			"^tmp/",
+			"^.git/",
+			"/.git/",
 		],
 
 		// how many incrementals will be created before doing a full backup again. for a weekly full backup, set this to 6.
