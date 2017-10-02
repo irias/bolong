@@ -47,9 +47,9 @@ func main() {
 	log.SetFlags(0)
 	flag.Usage = func() {
 		log.Println("usage:")
-		log.Println("bolong [-config config.json] [-path path] backup [flags] [directory]")
-		log.Println("bolong [-config config.json] [-path path] restore [flags] destination [path-regexp ...]")
-		log.Println("bolong [-config config.json] [-path path] list")
+		log.Println("bolong [flags] backup [flags] [directory]")
+		log.Println("bolong [flags] restore [flags] destination [path-regexp ...]")
+		log.Println("bolong [flags] list")
 		flag.PrintDefaults()
 	}
 	flag.Parse()
