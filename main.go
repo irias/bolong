@@ -10,6 +10,7 @@ import (
 )
 
 var (
+	version    = "dev"
 	configPath = flag.String("config", "", "path to config file")
 	remotePath = flag.String("path", "", "path at remote storage, overrides config file")
 	config     struct {
@@ -50,6 +51,7 @@ func main() {
 		log.Println("bolong [flags] backup [flags] [directory]")
 		log.Println("bolong [flags] restore [flags] destination [path-regexp ...]")
 		log.Println("bolong [flags] list")
+		log.Println("bolong [flags] version")
 		flag.PrintDefaults()
 	}
 	flag.Parse()
@@ -111,6 +113,8 @@ func main() {
 		restore(args)
 	case "list":
 		list(args)
+	case "version":
+		_version(args)
 	default:
 		flag.Usage()
 		os.Exit(1)
