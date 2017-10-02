@@ -140,6 +140,7 @@ func backup(args []string) {
 	data, err = NewSafeWriter(data)
 	check(err, "creating safe file")
 
+	var whitelist []string // whitelisted directories. all children files will be included.
 	dataOffset := int64(0)
 	nfiles := 0
 	filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
@@ -162,29 +163,29 @@ func backup(args []string) {
 			matchPath += "/"
 		}
 		if len(includes) > 0 {
-			if !matchAny(includes, matchPath) {
-				if info.IsDir() {
-					if *verbose {
-						log.Println(`no "include" match, skipping`, matchPath)
+			match := matchAny(includes, matchPath)
+			if match && info.IsDir() {
+				whitelist = append(whitelist, matchPath)
+			}
+			if !match && !info.IsDir() {
+				for _, white := range whitelist {
+					if !strings.HasPrefix(matchPath, white) {
+						if *verbose {
+							log.Println(`no "include" match, skipping`, matchPath)
+						}
+						return nil
 					}
-					return filepath.SkipDir
 				}
-				if *verbose {
-					log.Println(`no "include" match, skipping`, matchPath)
-				}
-				return nil
 			}
 		}
 		if len(excludes) > 0 {
-			if matchAny(excludes, matchPath) {
-				if info.IsDir() {
-					if *verbose {
-						log.Println(`"exclude" match, skipping`, matchPath)
-					}
-					return filepath.SkipDir
-				}
+			match := matchAny(excludes, matchPath)
+			if match {
 				if *verbose {
 					log.Println(`"exclude" match, skipping`, matchPath)
+				}
+				if info.IsDir() {
+					return filepath.SkipDir
 				}
 				return nil
 			}
