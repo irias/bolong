@@ -32,6 +32,10 @@ func (l *Local) Create(path string) (w io.WriteCloser, err error) {
 	return os.Create(l.path + path)
 }
 
+func (l *Local) Rename(opath, npath string) (err error) {
+	return os.Rename(l.path + opath, l.path + npath)
+}
+
 func (l *Local) Delete(path string) (err error) {
 	return os.Remove(l.path + path)
 }

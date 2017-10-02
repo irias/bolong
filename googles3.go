@@ -34,7 +34,7 @@ func (r *GoogleS3) List() (names []string, err error) {
 		return nil, err
 	}
 
-	date := time.Now().Format(time.RFC1123Z)
+	date := time.Now().UTC().Format(time.RFC1123Z)
 	req.Header.Add("Date", date)
 
 	msg := "GET\n"
@@ -79,7 +79,7 @@ func (xr *GoogleS3) Open(path string) (r io.ReadCloser, err error) {
 		return nil, err
 	}
 
-	date := time.Now().Format(time.RFC1123Z)
+	date := time.Now().UTC().Format(time.RFC1123Z)
 	req.Header.Add("Date", date)
 
 	msg := "GET\n"
@@ -125,7 +125,7 @@ func (r *GoogleS3) Create(path string) (w io.WriteCloser, err error) {
 		return nil, err
 	}
 
-	date := time.Now().Format(time.RFC1123Z)
+	date := time.Now().UTC().Format(time.RFC1123Z)
 	req.Header.Add("Date", date)
 
 	msg := "PUT\n"
@@ -159,6 +159,43 @@ func (r *GoogleS3) Create(path string) (w io.WriteCloser, err error) {
 	return s3w, nil
 }
 
+func (r *GoogleS3) Rename(opath, npath string) (err error) {
+	client := &http.Client{}
+	req, err := http.NewRequest("PUT", "https://storage.googleapis.com/"+r.bucket+r.path+npath, nil)
+	if err != nil {
+		return fmt.Errorf("creating http request: %s", err)
+	}
+
+	date := time.Now().UTC().Format(time.RFC1123Z)
+	req.Header.Add("Date", date)
+	copySource := "/" + r.bucket + r.path + opath
+	req.Header.Add("x-amz-copy-source", copySource)
+
+	msg := "PUT\n"
+	msg += "\n"
+	msg += "\n"
+	msg += date + "\n"
+	msg += fmt.Sprintf("x-amz-copy-source:%s\n", copySource)
+	msg += "/" + r.bucket + r.path + npath
+
+	req.Header.Add("Authorization", r.authorize(msg))
+	req.ContentLength = 0
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return fmt.Errorf("http request for copying resource: %s", err)
+	}
+	if resp.StatusCode != 200 {
+		return fmt.Errorf("copying resource, http status not 200 but %d", resp.StatusCode)
+	}
+
+	err = r.Delete(opath)
+	if err != nil {
+		return fmt.Errorf("deleting original resource after copying: %s", err)
+	}
+	return nil
+}
+
 func (r *GoogleS3) Delete(path string) (err error) {
 	client := &http.Client{}
 	req, err := http.NewRequest("DELETE", "https://storage.googleapis.com/"+r.bucket+r.path+path, nil)
@@ -166,7 +203,7 @@ func (r *GoogleS3) Delete(path string) (err error) {
 		return err
 	}
 
-	date := time.Now().Format(time.RFC1123Z)
+	date := time.Now().UTC().Format(time.RFC1123Z)
 	req.Header.Add("Date", date)
 
 	msg := "DELETE\n"

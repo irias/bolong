@@ -214,7 +214,7 @@ func backup(args []string) {
 	}
 	indexPath := fmt.Sprintf("%s.index.%s", name, kind)
 	var index io.WriteCloser
-	index, err = remote.Create(indexPath)
+	index, err = remote.Create(indexPath + ".tmp")
 	check(err, "creating index file")
 	index, err = NewSafeWriter(index)
 	check(err, "creating safe file")
@@ -222,6 +222,8 @@ func backup(args []string) {
 	check(err, "writing index file")
 	err = index.Close()
 	check(err, "closing index file")
+	err = remote.Rename(indexPath + ".tmp", indexPath)
+	check(err, "moving temp index file into place")
 
 	if *verbose {
 		log.Printf("new %s backup: %s\n", kindName, name)
