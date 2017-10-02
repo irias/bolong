@@ -66,7 +66,7 @@ Your files are protected by a passphrase. Each backed up file starts with a 32 b
 Each backup is made of two files:
 
 1. Data file, containing the contents of all files stored in this backup.
-2. Index file, listing all files and meta information in this backup (file name, regular/directory, permissions, mtime, owner/group, and offset into data file. An incremental backup lists all files that would be restored for a restore operation, not only the modified files.
+2. Index file, listing all files and meta information in this backup (file name, regular/directory, permissions, mtime, and offset into data file (we don't currently store owner/group). An incremental backup lists all files that would be restored for a restore operation, not only the modified files.
 
 Each file starts with a 32 byte salt. Followed by data in the DARE format (Data at Rest, see https://github.com/minio/sio).
 
@@ -90,7 +90,10 @@ For feedback, contact Mechiel Lukkien at mechiel@ueber.net.
 
 # Todo
 
+- command for version
+- command to list files in a backup
 - include/exclude should not apply to directories (and their children files). only to files, the right directories should be restored automatically.
-- user/group in backups. store them.  restore them.
 
 - is our behaviour correct when restoring to a directory that already has some files?  we currently fail when we try to create a file/directory that already exists.
+
+- store/restore owner/group of files

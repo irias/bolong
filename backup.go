@@ -199,9 +199,9 @@ func backup(args []string) {
 			info.Mode() & os.ModePerm,
 			info.ModTime(),
 			size,
-			"xuser",
-			"xgroup",
-			-1, // data offset
+			"o", // placeholder for owner, in the future
+			"g", // group
+			-1,  // data offset
 			relpath,
 		}
 
