@@ -90,7 +90,7 @@ func backup(args []string) {
 		}
 	}
 
-	name := time.Now().Format("20060102-150405")
+	name := time.Now().UTC().Format("20060102-150405")
 	dataPath := fmt.Sprintf("%s.data", name)
 	var data io.WriteCloser
 	data, err = remote.Create(dataPath)

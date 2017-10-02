@@ -70,7 +70,7 @@ Each backup is made of two files:
 
 Each file starts with a 32 byte salt. Followed by data in the DARE format (Data at Rest, see https://github.com/minio/sio).
 
-Backups, and the file names are named after the time they were initiated. A backup name has the form YYYYMMDD-hhmmdd. The file names have ".data" and either ".index.full" or ".index.incr" appended.
+Backups, and the file names are named after the time they were initiated (in UTC). A backup name has the form YYYYMMDD-hhmmdd. The file names have ".data" and either ".index.full" or ".index.incr" appended.
 
 # License
 
