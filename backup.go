@@ -222,7 +222,7 @@ func backup(args []string) {
 	check(err, "writing index file")
 	err = index.Close()
 	check(err, "closing index file")
-	err = remote.Rename(indexPath + ".tmp", indexPath)
+	err = remote.Rename(indexPath+".tmp", indexPath)
 	check(err, "moving temp index file into place")
 
 	if *verbose {

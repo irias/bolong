@@ -74,7 +74,7 @@ func (r *GoogleS3) List() (names []string, err error) {
 
 func (xr *GoogleS3) Open(path string) (r io.ReadCloser, err error) {
 	client := &http.Client{}
-	req, err := http.NewRequest("GET", "https://storage.googleapis.com/"+xr.bucket+xr.path+path, nil)
+	req, err := http.NewRequest("GET", "https://storage.googleapis.com/"+xr.bucket+url.PathEscape(xr.path+path), nil)
 	if err != nil {
 		return nil, err
 	}
@@ -86,7 +86,7 @@ func (xr *GoogleS3) Open(path string) (r io.ReadCloser, err error) {
 	msg += "\n"
 	msg += "\n"
 	msg += date + "\n"
-	msg += "/" + xr.bucket + xr.path + path
+	msg += "/" + xr.bucket + url.PathEscape(xr.path+path)
 
 	req.Header.Add("Authorization", xr.authorize(msg))
 
@@ -120,7 +120,7 @@ func (x *s3writer) Close() error {
 
 func (r *GoogleS3) Create(path string) (w io.WriteCloser, err error) {
 	client := &http.Client{}
-	req, err := http.NewRequest("PUT", "https://storage.googleapis.com/"+r.bucket+r.path+path, nil)
+	req, err := http.NewRequest("PUT", "https://storage.googleapis.com/"+r.bucket+url.PathEscape(r.path+path), nil)
 	if err != nil {
 		return nil, err
 	}
@@ -132,7 +132,7 @@ func (r *GoogleS3) Create(path string) (w io.WriteCloser, err error) {
 	msg += "\n"
 	msg += "\n"
 	msg += date + "\n"
-	msg += "/" + r.bucket + r.path + path
+	msg += "/" + r.bucket + url.PathEscape(r.path+path)
 
 	req.Header.Add("Authorization", r.authorize(msg))
 
@@ -161,14 +161,14 @@ func (r *GoogleS3) Create(path string) (w io.WriteCloser, err error) {
 
 func (r *GoogleS3) Rename(opath, npath string) (err error) {
 	client := &http.Client{}
-	req, err := http.NewRequest("PUT", "https://storage.googleapis.com/"+r.bucket+r.path+npath, nil)
+	req, err := http.NewRequest("PUT", "https://storage.googleapis.com/"+r.bucket+url.PathEscape(r.path+npath), nil)
 	if err != nil {
 		return fmt.Errorf("creating http request: %s", err)
 	}
 
 	date := time.Now().UTC().Format(time.RFC1123Z)
 	req.Header.Add("Date", date)
-	copySource := "/" + r.bucket + r.path + opath
+	copySource := "/" + r.bucket + url.PathEscape(r.path+opath)
 	req.Header.Add("x-amz-copy-source", copySource)
 
 	msg := "PUT\n"
@@ -176,7 +176,7 @@ func (r *GoogleS3) Rename(opath, npath string) (err error) {
 	msg += "\n"
 	msg += date + "\n"
 	msg += fmt.Sprintf("x-amz-copy-source:%s\n", copySource)
-	msg += "/" + r.bucket + r.path + npath
+	msg += "/" + r.bucket + url.PathEscape(r.path+npath)
 
 	req.Header.Add("Authorization", r.authorize(msg))
 	req.ContentLength = 0
@@ -198,7 +198,7 @@ func (r *GoogleS3) Rename(opath, npath string) (err error) {
 
 func (r *GoogleS3) Delete(path string) (err error) {
 	client := &http.Client{}
-	req, err := http.NewRequest("DELETE", "https://storage.googleapis.com/"+r.bucket+r.path+path, nil)
+	req, err := http.NewRequest("DELETE", "https://storage.googleapis.com/"+r.bucket+url.PathEscape(r.path+path), nil)
 	if err != nil {
 		return err
 	}
@@ -210,7 +210,7 @@ func (r *GoogleS3) Delete(path string) (err error) {
 	msg += "\n"
 	msg += "\n"
 	msg += date + "\n"
-	msg += "/" + r.bucket + r.path + path
+	msg += "/" + r.bucket + url.PathEscape(r.path+path)
 
 	req.Header.Add("Authorization", r.authorize(msg))
 
