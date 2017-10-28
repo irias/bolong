@@ -1,4 +1,7 @@
 /bolong
 /.bolong.json
 /local/
+
+.hg/
+
 *.swp
