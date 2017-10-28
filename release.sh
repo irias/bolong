@@ -1,6 +1,8 @@
 #!/bin/bash
 
-env NAME=$(basename $PWD) \
+mkdir local 2>/dev/null
+
+exec env NAME=$(basename $PWD) \
 VERSION=$(git describe --tags | sed 's/^v//') \
 GOVERSION=$(go version | cut -f3 -d' ') \
 sh -c '
@@ -10,8 +12,8 @@ sh -c '
 	if test $GOOS = windows; then
 		SUFFIX=.exe
 	fi
-	DEST=local/${NAME}-${VERSION:-x}/${NAME}-${VERSION:-x}-${GOOS:-x}-${GOARCH:-x}-${GOVERSION:-x}${SUFFIX};
+	DEST=local/${NAME}-${VERSION:-x}/${NAME}-${VERSION:-x}-${GOOS:-x}-${GOARCH:-x}-${GOVERSION:-x}-${BUILDID:-0}${SUFFIX};
 	go build -ldflags "-X main.version=${VERSION:-x}" &&
 	mv ${NAME}${SUFFIX} $DEST &&
-	ls -l $DEST
+	echo release: $NAME $VERSION $GOOS $GOARCH $GOVERSION $DEST
 '

@@ -93,6 +93,7 @@ For feedback, contact Mechiel Lukkien at mechiel@ueber.net.
 
 # Todo
 
+- in index files, store the name of the backup + dataoffset for incremental backups. so we only ever have to read 1 index file when we want to restore, and can easily calculate how much total data we have to fetch (also add the compressed/encrypted sizes of the incrementals+1 full in the index file).
 - is our behaviour correct when restoring to a directory that already has some files?  we currently fail when we try to create a file/directory that already exists.
 - store/restore owner/group of files
 - do something for symlinks
