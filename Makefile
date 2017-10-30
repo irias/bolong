@@ -2,7 +2,7 @@ build:
 	go build -i
 
 test:
-	go test
+	go test -cover
 
 release:
 	env GOOS=linux GOARCH=amd64 ./release.sh
