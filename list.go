@@ -13,30 +13,30 @@ var (
 	errNotFound = errors.New("not found")
 )
 
-type Backup struct {
+type backup struct {
 	name        string
 	incremental bool
 }
 
 // return backups in order of timestamp
-func listBackups() ([]*Backup, error) {
-	var r []*Backup
+func listBackups() ([]*backup, error) {
+	var r []*backup
 	l, err := remote.List()
 	if err != nil {
 		return nil, fmt.Errorf("listing remote: %s", err)
 	}
 	for _, name := range l {
 		if strings.HasSuffix(name, ".index.full") {
-			r = append(r, &Backup{name[:len(name)-len(".index.full")], false})
+			r = append(r, &backup{name[:len(name)-len(".index.full")], false})
 		}
 		if strings.HasSuffix(name, ".index.incr") {
-			r = append(r, &Backup{name[:len(name)-len(".index.full")], true})
+			r = append(r, &backup{name[:len(name)-len(".index.full")], true})
 		}
 	}
 	return r, nil
 }
 
-func findBackup(name string) (*Backup, error) {
+func findBackup(name string) (*backup, error) {
 	l, err := listBackups()
 	if err != nil {
 		return nil, fmt.Errorf("listing backups: %s", err)
@@ -50,7 +50,7 @@ func findBackup(name string) (*Backup, error) {
 }
 
 // find the backup, and its predecessors, up until the first full backup
-func findBackups(name string) ([]*Backup, error) {
+func findBackups(name string) ([]*backup, error) {
 	l, err := listBackups()
 	if err != nil {
 		return nil, fmt.Errorf("listing backups: %s", err)
@@ -61,7 +61,7 @@ func findBackups(name string) ([]*Backup, error) {
 			lastFull = i
 		}
 		if b.name == name || (name == "latest" && i == len(l)-1) {
-			r := make([]*Backup, 0, i+1-lastFull)
+			r := make([]*backup, 0, i+1-lastFull)
 			for j := i; j >= lastFull; j-- {
 				r = append(r, l[j])
 			}

@@ -6,13 +6,13 @@ import (
 	"os"
 )
 
-type Local struct {
+type local struct {
 	path string
 }
 
-var _ Remote = &Local{}
+var _ destination = &local{}
 
-func (l *Local) List() (names []string, err error) {
+func (l *local) List() (names []string, err error) {
 	files, err := ioutil.ReadDir(l.path)
 	if err != nil {
 		return nil, err
@@ -24,18 +24,18 @@ func (l *Local) List() (names []string, err error) {
 	return names, nil
 }
 
-func (l *Local) Open(path string) (r io.ReadCloser, err error) {
+func (l *local) Open(path string) (r io.ReadCloser, err error) {
 	return os.Open(l.path + path)
 }
 
-func (l *Local) Create(path string) (w io.WriteCloser, err error) {
+func (l *local) Create(path string) (w io.WriteCloser, err error) {
 	return os.Create(l.path + path)
 }
 
-func (l *Local) Rename(opath, npath string) (err error) {
+func (l *local) Rename(opath, npath string) (err error) {
 	return os.Rename(l.path+opath, l.path+npath)
 }
 
-func (l *Local) Delete(path string) (err error) {
+func (l *local) Delete(path string) (err error) {
 	return os.Remove(l.path + path)
 }

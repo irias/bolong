@@ -12,22 +12,22 @@ import (
 	"time"
 )
 
-type GoogleS3 struct {
+type googleS3 struct {
 	bucket string // no slashes
 	path   string // starts and ends with slash
 }
 
-var _ Remote = &GoogleS3{}
+var _ destination = &googleS3{}
 
 // Make HTTP authorization header for AWS-style authentication.
-func (r *GoogleS3) authorize(msg string) string {
+func (r *googleS3) authorize(msg string) string {
 	h := hmac.New(sha1.New, []byte(config.GoogleS3.Secret))
 	h.Write([]byte(msg))
 	sig := base64.StdEncoding.EncodeToString(h.Sum(nil))
 	return fmt.Sprintf("AWS %s:%s", config.GoogleS3.AccessKey, sig)
 }
 
-func (r *GoogleS3) List() (names []string, err error) {
+func (r *googleS3) List() (names []string, err error) {
 	client := &http.Client{}
 	req, err := http.NewRequest("GET", "https://storage.googleapis.com/"+r.bucket+"/?prefix="+url.QueryEscape(r.path[1:]), nil)
 	if err != nil {
@@ -72,9 +72,9 @@ func (r *GoogleS3) List() (names []string, err error) {
 	return list.Key, nil
 }
 
-func (xr *GoogleS3) Open(path string) (r io.ReadCloser, err error) {
+func (r *googleS3) Open(path string) (rc io.ReadCloser, err error) {
 	client := &http.Client{}
-	req, err := http.NewRequest("GET", "https://storage.googleapis.com/"+xr.bucket+url.PathEscape(xr.path+path), nil)
+	req, err := http.NewRequest("GET", "https://storage.googleapis.com/"+r.bucket+url.PathEscape(r.path+path), nil)
 	if err != nil {
 		return nil, err
 	}
@@ -86,9 +86,9 @@ func (xr *GoogleS3) Open(path string) (r io.ReadCloser, err error) {
 	msg += "\n"
 	msg += "\n"
 	msg += date + "\n"
-	msg += "/" + xr.bucket + url.PathEscape(xr.path+path)
+	msg += "/" + r.bucket + url.PathEscape(r.path+path)
 
-	req.Header.Add("Authorization", xr.authorize(msg))
+	req.Header.Add("Authorization", r.authorize(msg))
 
 	resp, err := client.Do(req)
 	if err != nil {
@@ -118,7 +118,7 @@ func (x *s3writer) Close() error {
 	return <-x.err
 }
 
-func (r *GoogleS3) Create(path string) (w io.WriteCloser, err error) {
+func (r *googleS3) Create(path string) (w io.WriteCloser, err error) {
 	client := &http.Client{}
 	req, err := http.NewRequest("PUT", "https://storage.googleapis.com/"+r.bucket+url.PathEscape(r.path+path), nil)
 	if err != nil {
@@ -159,7 +159,7 @@ func (r *GoogleS3) Create(path string) (w io.WriteCloser, err error) {
 	return s3w, nil
 }
 
-func (r *GoogleS3) Rename(opath, npath string) (err error) {
+func (r *googleS3) Rename(opath, npath string) (err error) {
 	client := &http.Client{}
 	req, err := http.NewRequest("PUT", "https://storage.googleapis.com/"+r.bucket+url.PathEscape(r.path+npath), nil)
 	if err != nil {
@@ -196,7 +196,7 @@ func (r *GoogleS3) Rename(opath, npath string) (err error) {
 	return nil
 }
 
-func (r *GoogleS3) Delete(path string) (err error) {
+func (r *googleS3) Delete(path string) (err error) {
 	client := &http.Client{}
 	req, err := http.NewRequest("DELETE", "https://storage.googleapis.com/"+r.bucket+url.PathEscape(r.path+path), nil)
 	if err != nil {

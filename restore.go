@@ -43,14 +43,14 @@ func restore(args []string) {
 
 	log.Printf("restoring %s to %s\n", *name, target)
 
-	var backups []*Backup
+	var backups []*backup
 	if *name == "latest" {
 		backups, err = listBackups()
 		check(err, "listing backups")
 		if len(backups) == 0 {
 			log.Fatal("no backups available")
 		}
-		var r []*Backup
+		var r []*backup
 		for i := len(backups) - 1; i >= 0; i-- {
 			r = append(r, backups[i])
 			if !backups[i].incremental {
@@ -88,7 +88,7 @@ func restore(args []string) {
 
 	for {
 		// figure out if this backup has files we still need
-		var restores []*File
+		var restores []*file
 		for _, file := range idx.contents {
 			if !file.isDir && file.dataOffset < 0 {
 				// not in this backup
@@ -105,7 +105,7 @@ func restore(args []string) {
 			var data io.ReadCloser
 			data, err := remote.Open(dataPath)
 			check(err, "open data file")
-			data, err = NewSafeReader(data)
+			data, err = newSafeReader(data)
 			check(err, "opening safe reader")
 
 			sort.Slice(restores, func(i, j int) bool {

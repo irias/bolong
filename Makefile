@@ -2,6 +2,8 @@ build:
 	go build -i
 
 test:
+	go vet
+	golint
 	go test -cover
 
 release:

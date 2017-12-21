@@ -4,7 +4,7 @@ import (
 	"io"
 )
 
-type Remote interface {
+type destination interface {
 	List() (names []string, err error)
 	Open(path string) (r io.ReadCloser, err error)
 	Create(path string) (w io.WriteCloser, err error)

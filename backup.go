@@ -14,7 +14,7 @@ import (
 	"time"
 )
 
-func backup(args []string) {
+func backupCmd(args []string) {
 	fs := flag.NewFlagSet("backup", flag.ExitOnError)
 	fs.Usage = func() {
 		log.Println("usage: bolong [flags] backup [flags] directory")
@@ -69,9 +69,9 @@ func backup(args []string) {
 		dir += "/"
 	}
 
-	nidx := &Index{}
-	var oidx *Index
-	unseen := map[string]*File{}
+	nidx := &index{}
+	var oidx *index
+	unseen := map[string]*file{}
 	incremental := false
 	if config.IncrementalsPerFull > 0 {
 		// backups will be all incremental backups (most recent first), leading to the first full backup (also included)
@@ -137,7 +137,7 @@ func backup(args []string) {
 	data, err = remote.Create(dataPath)
 	check(err, "creating data file")
 	partialpaths <- dataPath
-	data, err = NewSafeWriter(data)
+	data, err = newSafeWriter(data)
 	check(err, "creating safe file")
 
 	var whitelist []string // whitelisted directories. all children files will be included.
@@ -200,7 +200,7 @@ func backup(args []string) {
 		if !info.IsDir() {
 			size = info.Size()
 		}
-		nf := &File{
+		nf := &file{
 			info.IsDir(),
 			info.Mode() & os.ModePerm,
 			info.ModTime(),
@@ -212,7 +212,7 @@ func backup(args []string) {
 		}
 
 		nidx.contents = append(nidx.contents, nf)
-		nfiles += 1
+		nfiles++
 
 		if incremental {
 			of, ok := unseen[relpath]
@@ -265,7 +265,7 @@ func backup(args []string) {
 	index, err = remote.Create(indexPath + ".tmp")
 	check(err, "creating index file")
 	partialpaths <- indexPath + ".tmp"
-	index, err = NewSafeWriter(index)
+	index, err = newSafeWriter(index)
 	check(err, "creating safe file")
 	indexSize, err := writeIndex(index, nidx)
 	check(err, "writing index file")
@@ -298,7 +298,7 @@ func backup(args []string) {
 		fullSeen := 0
 		for i := len(backups) - 1; i > 0; i-- {
 			if !backups[i].incremental {
-				fullSeen += 1
+				fullSeen++
 			}
 			if fullSeen >= config.IncrementalForFullKeep {
 				for j := 0; j < i; j++ {
@@ -323,7 +323,7 @@ func backup(args []string) {
 		fullSeen = 0
 		for i := len(backups) - 1; i > 0; i-- {
 			if !backups[i].incremental {
-				fullSeen += 1
+				fullSeen++
 			}
 			if fullSeen >= config.FullKeep {
 				for j := 0; j < i; j++ {
@@ -354,7 +354,7 @@ func matchAny(l []*regexp.Regexp, s string) bool {
 	return false
 }
 
-func fileChanged(old, new *File) bool {
+func fileChanged(old, new *file) bool {
 	if old.name != new.name {
 		log.Fatalf("inconsistent fileChanged call, names don't match, %s != %s", old.name, new.name)
 	}

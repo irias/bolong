@@ -31,7 +31,7 @@ var (
 		IncrementalForFullKeep int
 		Passphrase             string
 	}
-	remote Remote
+	remote destination
 )
 
 func check(err error, msg string) {
@@ -84,7 +84,7 @@ func main() {
 		if !strings.HasSuffix(path, "/") {
 			path += "/"
 		}
-		remote = &Local{path}
+		remote = &local{path}
 	case "googles3":
 		if *remotePath != "" {
 			config.GoogleS3.Path = *remotePath
@@ -97,7 +97,7 @@ func main() {
 		if !strings.HasPrefix(path, "/") || !strings.HasSuffix(path, "/") {
 			log.Fatal(`field "googles3.path" must start and end with a slash`)
 		}
-		remote = &GoogleS3{config.GoogleS3.Bucket, path}
+		remote = &googleS3{config.GoogleS3.Bucket, path}
 	case "":
 		log.Print(`missing field "kind", must be "local" or "googles3"`)
 		printExampleConfig()
@@ -109,7 +109,7 @@ func main() {
 	args = args[1:]
 	switch cmd {
 	case "backup":
-		backup(args)
+		backupCmd(args)
 	case "restore":
 		restore(args)
 	case "list":

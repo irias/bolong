@@ -25,7 +25,7 @@ index0
 
 */
 
-type File struct {
+type file struct {
 	isDir       bool
 	permissions os.FileMode
 	mtime       time.Time
@@ -36,7 +36,7 @@ type File struct {
 	name        string
 }
 
-func parseFile(line string) (*File, error) {
+func parseFile(line string) (*file, error) {
 	t := strings.SplitN(line, " ", 8)
 	if len(t) != 8 {
 		return nil, fmt.Errorf("invalid file line, doesn't have 8 tokens: %s", line)
@@ -45,7 +45,7 @@ func parseFile(line string) (*File, error) {
 	if err != nil {
 		return nil, fmt.Errorf("invalid permissions %s: %s", t[1], err)
 	}
-	f := &File{}
+	f := &file{}
 	switch t[0] {
 	case "f":
 		f.isDir = false
@@ -85,7 +85,7 @@ func parseFile(line string) (*File, error) {
 	return f, nil
 }
 
-func (f File) indexString() string {
+func (f file) indexString() string {
 	kind := "f"
 	if f.isDir {
 		kind = "d"
@@ -93,14 +93,14 @@ func (f File) indexString() string {
 	return fmt.Sprintf("%s %o %d %d %s %s %d %s", kind, f.permissions, f.mtime.Unix(), f.size, f.user, f.group, f.dataOffset, f.name)
 }
 
-type Index struct {
+type index struct {
 	previousName string
 	add          []string
 	delete       []string
-	contents     []*File
+	contents     []*file
 }
 
-func readIndex(b *Backup) (idx *Index, err error) {
+func readIndex(b *backup) (idx *index, err error) {
 	kindName := "full"
 	if b.incremental {
 		kindName = "incr"
@@ -111,7 +111,7 @@ func readIndex(b *Backup) (idx *Index, err error) {
 	if err != nil {
 		return nil, fmt.Errorf("open index file: %s", err)
 	}
-	tmpf, err := NewSafeReader(f)
+	tmpf, err := newSafeReader(f)
 	if err != nil {
 		f.Close()
 		return nil, err
@@ -126,7 +126,7 @@ func readIndex(b *Backup) (idx *Index, err error) {
 		return
 	}()
 
-	idx = &Index{}
+	idx = &index{}
 
 	scanner := bufio.NewScanner(f)
 	if !scanner.Scan() {
@@ -168,7 +168,7 @@ func readIndex(b *Backup) (idx *Index, err error) {
 	return idx, scanner.Err()
 }
 
-func writeIndex(index io.Writer, idx *Index) (int, error) {
+func writeIndex(index io.Writer, idx *index) (int, error) {
 	size := 0
 
 	n, err := fmt.Fprintf(index, "index0\n%s\n", idx.previousName)
