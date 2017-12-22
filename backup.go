@@ -69,21 +69,36 @@ func backupCmd(args []string) {
 		dir += "/"
 	}
 
+	// incremental backups list the previous incr/full backups that need files from
+	// so we have to do some bookkeeping when we do an incremental backup, only keeping index files of previous backups that still have a file we need.
+	type earlier struct {
+		prev previous
+		used bool
+	}
+	var earliers []earlier
+
 	nidx := &index{}
 	var oidx *index
 	unseen := map[string]*file{}
 	incremental := false
 	if config.IncrementalsPerFull > 0 {
 		// backups will be all incremental backups (most recent first), leading to the first full backup (also included)
-		backups, err := findBackups("latest")
+		backups, err := findBackupChain("latest")
 		if err == nil {
 			incremental = len(backups)-1 < config.IncrementalsPerFull
-			b := backups[0]
-			nidx.previousName = b.name
-			oidx, err = readIndex(b)
-			check(err, "parsing previous index file")
-			for _, f := range oidx.contents {
-				unseen[f.name] = f
+			if incremental {
+				b := backups[0]
+				oidx, err = readIndex(b)
+				check(err, "parsing previous index file")
+				for _, f := range oidx.contents {
+					unseen[f.name] = f
+				}
+
+				earliers = make([]earlier, len(oidx.previous)+1)
+				for i, p := range oidx.previous {
+					earliers[i] = earlier{p, false}
+				}
+				earliers[len(earliers)-1] = earlier{previous{true, b.name, oidx.dataSize}, false}
 			}
 		} else if err == errNotFound {
 			// do first full
@@ -92,6 +107,7 @@ func backupCmd(args []string) {
 		}
 	}
 
+	// keep track of the paths we've created at remote, so we can clean up them up when we are interrupted.
 	partialpaths := make(chan string)
 	cleanup := make(chan os.Signal)
 	signal.Notify(cleanup, syscall.SIGINT, syscall.SIGTERM)
@@ -137,6 +153,8 @@ func backupCmd(args []string) {
 	data, err = remote.Create(dataPath)
 	check(err, "creating data file")
 	partialpaths <- dataPath
+	dwc := &writeCounter{f: data}
+	data = dwc
 	data, err = newSafeWriter(data)
 	check(err, "creating safe file")
 
@@ -208,6 +226,7 @@ func backupCmd(args []string) {
 			"o", // placeholder for owner, in the future
 			"g", // group
 			-1,  // data offset
+			-1,  // previous index, possibly updated later
 			relpath,
 		}
 
@@ -219,6 +238,17 @@ func backupCmd(args []string) {
 			if ok {
 				delete(unseen, relpath)
 				if !fileChanged(of, nf) {
+					if !nf.isDir {
+						// these indices are against the index file from the previous incremental backup.
+						// we fix up these indices later on, after we know which previous backups are still referenced.
+						prevIndex := of.previousIndex
+						if prevIndex == -1 {
+							// files contained in the last index are now in the new previous-index-reference
+							prevIndex = len(earliers) - 1
+						}
+						nf.previousIndex = prevIndex
+						earliers[prevIndex].used = true
+					}
 					return nil
 				}
 			} else {
@@ -246,6 +276,20 @@ func backupCmd(args []string) {
 	})
 
 	if incremental {
+		// map previousIndex from last index file to those in index file we're making now.
+		// some old index/data files might may no longer be necessary, because all files contained within have been overwritten/deleted.
+		prevIndexMap := map[int]int{}
+		for i, e := range earliers {
+			if e.used {
+				prevIndexMap[i] = len(nidx.previous)
+				nidx.previous = append(nidx.previous, e.prev)
+			}
+		}
+		for _, f := range nidx.contents {
+			if f.previousIndex >= 0 {
+				f.previousIndex = prevIndexMap[f.previousIndex]
+			}
+		}
 		for _, f := range unseen {
 			nidx.delete = append(nidx.delete, f.name)
 		}
@@ -254,20 +298,24 @@ func backupCmd(args []string) {
 	err = data.Close()
 	check(err, "closing data file")
 
+	nidx.dataSize = dwc.size
+
 	kind := "full"
 	kindName := "full"
 	if incremental {
 		kind = "incr"
 		kindName = "incremental"
 	}
-	indexPath := fmt.Sprintf("%s.index.%s", name, kind)
+	indexPath := fmt.Sprintf("%s.index1.%s", name, kind)
 	var index io.WriteCloser
 	index, err = remote.Create(indexPath + ".tmp")
 	check(err, "creating index file")
 	partialpaths <- indexPath + ".tmp"
 	index, err = newSafeWriter(index)
+	iwc := &writeCounter{f: index}
+	index = iwc
 	check(err, "creating safe file")
-	indexSize, err := writeIndex(index, nidx)
+	err = writeIndex(index, nidx)
 	check(err, "writing index file")
 	err = index.Close()
 	check(err, "closing index file")
@@ -281,14 +329,7 @@ func backupCmd(args []string) {
 		if incremental {
 			addDel = fmt.Sprintf(", +%d files, -%d files", len(nidx.add), len(nidx.delete))
 		}
-		totalSize := int64(indexSize) + dataOffset
-		size := ""
-		if totalSize > 1024*1024*1024 {
-			size = fmt.Sprintf("%.1fgb", float64(totalSize)/(1024*1024*1024))
-		} else {
-			size = fmt.Sprintf("%.1fmb", float64(totalSize)/(1024*1024))
-		}
-		log.Printf("total size %s, total files %d%s\n", size, nfiles, addDel)
+		log.Printf("total files %d, total size %s, backup size %s%s\n", nfiles, formatSize(dataOffset), formatSize(dwc.size+iwc.size), addDel)
 	}
 
 	if config.FullKeep > 0 || config.IncrementalForFullKeep > 0 {
@@ -310,7 +351,7 @@ func backupCmd(args []string) {
 						if err != nil {
 							log.Println("removing old incremental backup:", err)
 						}
-						err = remote.Delete(backups[j].name + ".index.incr")
+						err = remote.Delete(backups[j].name + ".index1.incr")
 						if err != nil {
 							log.Println("removing old incremental backup:", err)
 						}
@@ -334,7 +375,7 @@ func backupCmd(args []string) {
 					if err != nil {
 						log.Println("removing old full backup:", err)
 					}
-					err = remote.Delete(backups[j].name + ".index.full")
+					err = remote.Delete(backups[j].name + ".index1.full")
 					if err != nil {
 						log.Println("removing old full backup:", err)
 					}

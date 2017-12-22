@@ -12,7 +12,13 @@ import (
 	"strings"
 )
 
-func restore(args []string) {
+type restore struct {
+	previousIndex int
+	previous      previous
+	files         []*file // no directories
+}
+
+func restoreCmd(args []string) {
 	fs := flag.NewFlagSet("restore", flag.ExitOnError)
 	fs.Usage = func() {
 		log.Println("usage: bolong [flags] restore [flags] destination [path-regepx ...]")
@@ -43,35 +49,56 @@ func restore(args []string) {
 
 	log.Printf("restoring %s to %s\n", *name, target)
 
-	var backups []*backup
-	if *name == "latest" {
-		backups, err = listBackups()
-		check(err, "listing backups")
-		if len(backups) == 0 {
-			log.Fatal("no backups available")
-		}
-		var r []*backup
-		for i := len(backups) - 1; i >= 0; i-- {
-			r = append(r, backups[i])
-			if !backups[i].incremental {
-				break
-			}
-		}
-		backups = r
-	} else {
-		backups, err = findBackups(*name)
-		check(err, "finding backups")
-	}
-	backup, backups := backups[0], backups[1:]
+	backup, err := findBackup(*name)
+	check(err, "looking up backup")
+
 	idx, err := readIndex(backup)
 	check(err, "parsing index")
 
-	need := map[string]struct{}{} // files we still need to restore
+	idx.previous = append(idx.previous, previous{backup.incremental, backup.name, idx.dataSize})
+	restoreMap := map[int]*restore{}
+	restores := []*restore{}
+	var dataSize int64
+	var totalSize int64
+	dirs := []*file{}
+	nfiles := 0
 	for _, f := range idx.contents {
 		if len(regexps) > 0 && !matchAny(regexps, f.name) {
 			continue
 		}
-		need[f.name] = struct{}{}
+		if f.isDir {
+			dirs = append(dirs, f)
+			continue
+		}
+		prevIndex := f.previousIndex
+		if prevIndex < 0 {
+			prevIndex = len(idx.previous) - 1
+		}
+		rest, ok := restoreMap[prevIndex]
+		if !ok {
+			rest = &restore{prevIndex, idx.previous[prevIndex], nil}
+			restoreMap[prevIndex] = rest
+			restores = append(restores, rest)
+			dataSize += rest.previous.dataSize
+		}
+		rest.files = append(rest.files, f)
+		totalSize += f.size
+		nfiles++
+	}
+	if *verbose {
+		dirWord := "dirs"
+		if len(dirs) == 1 {
+			dirWord = "dir"
+		}
+		fileWord := "files"
+		if nfiles == 1 {
+			fileWord = "file"
+		}
+		partWord := "parts"
+		if len(restores) == 1 {
+			partWord = "part"
+		}
+		log.Printf("restoring %d %s and %d %s totalling %s which requires fetching %s for %d backup %s\n", len(dirs), dirWord, nfiles, fileWord, formatSize(totalSize), formatSize(dataSize), len(restores), partWord)
 	}
 
 	err = os.MkdirAll(target, 0777)
@@ -86,92 +113,86 @@ func restore(args []string) {
 		target += "/"
 	}
 
-	for {
-		// figure out if this backup has files we still need
-		var restores []*file
-		for _, file := range idx.contents {
-			if !file.isDir && file.dataOffset < 0 {
-				// not in this backup
-				continue
-			}
-			if _, ok := need[file.name]; ok {
-				restores = append(restores, file)
-				delete(need, file.name)
-			}
-		}
-
-		if len(restores) > 0 {
-			dataPath := fmt.Sprintf("%s.data", backup.name)
-			var data io.ReadCloser
-			data, err := remote.Open(dataPath)
-			check(err, "open data file")
-			data, err = newSafeReader(data)
-			check(err, "opening safe reader")
-
-			sort.Slice(restores, func(i, j int) bool {
-				// make sure directories are created in right order
-				if restores[i].dataOffset == restores[j].dataOffset {
-					return restores[i].name < restores[j].name
-				}
-				return restores[i].dataOffset < restores[j].dataOffset
-			})
-
-			offset := int64(0)
-			for _, file := range restores {
-				if *verbose {
-					fmt.Println(file.name)
-				}
-				tpath := target + file.name
-				if file.isDir {
-					if file.name != "." {
-						err = os.Mkdir(tpath, file.permissions)
-						check(err, "restoring directory")
-					}
-					err = os.Chtimes(tpath, file.mtime, file.mtime)
-					check(err, "setting mtime for restored directory")
-					continue
-				}
-
-				if file.dataOffset > offset {
-					_, err := io.Copy(ioutil.Discard, &io.LimitedReader{R: data, N: file.dataOffset - offset})
-					check(err, "skipping through data")
-					offset = file.dataOffset
-				}
-
-				f, err := os.Create(tpath)
-				check(err, "restoring file")
-				r := &io.LimitedReader{R: data, N: file.size}
-				n, err := io.Copy(f, r)
-				if n != file.size {
-					log.Fatalf("short file contents for file %s: expected to write %d, but wrote %d", file.name, file.size, n)
-				}
-				offset += file.size
-				check(err, "restoring contents of file")
-				err = f.Close()
-				check(err, "closing restored file")
-				err = os.Chmod(tpath, file.permissions)
-				check(err, "setting permisssions on restored file")
-				err = os.Chtimes(tpath, file.mtime, file.mtime)
-				check(err, "setting mtimd/atime on restored file")
-			}
-
-			err = data.Close()
+	restorePrevious := func(rest *restore) {
+		dataPath := fmt.Sprintf("%s.data", rest.previous.name)
+		var data io.ReadCloser
+		data, err := remote.Open(dataPath)
+		check(err, "open data file")
+		data, err = newSafeReader(data)
+		check(err, "opening safe reader")
+		defer func() {
+			err := data.Close()
 			check(err, "closing data file")
-		}
+		}()
 
-		if len(need) == 0 {
-			break
-		}
-		if len(backups) == 0 {
-			log.Fatalf("still need to restore files, but no more backups available")
-		}
+		sort.Slice(rest.files, func(i, j int) bool {
+			return rest.files[i].dataOffset < rest.files[j].dataOffset
+		})
 
-		backup = backups[0]
-		backups = backups[1:]
-		idx, err = readIndex(backup)
-		check(err, "parsing next index")
-		if *verbose {
-			log.Println("next incremental backup loaded", backup.name, backup.incremental)
+		offset := int64(0)
+		for _, file := range rest.files {
+			if *verbose {
+				fmt.Println(file.name)
+			}
+			tpath := target + file.name
+
+			if file.dataOffset > offset {
+				_, err := io.Copy(ioutil.Discard, &io.LimitedReader{R: data, N: file.dataOffset - offset})
+				check(err, "skipping through data")
+				offset = file.dataOffset
+			}
+
+			f, err := os.Create(tpath)
+			check(err, "restoring file")
+			r := &io.LimitedReader{R: data, N: file.size}
+			n, err := io.Copy(f, r)
+			if n != file.size {
+				log.Fatalf("short file contents for file %s: expected to write %d, but wrote %d", file.name, file.size, n)
+			}
+			offset += file.size
+			check(err, "restoring contents of file")
+			err = f.Close()
+			check(err, "closing restored file")
+			err = os.Chmod(tpath, file.permissions)
+			check(err, "setting permisssions on restored file")
+			err = os.Chtimes(tpath, file.mtime, file.mtime)
+			check(err, "setting mtime/atime on restored file")
 		}
+	}
+
+	// restore all directories first. ensures creating files always works.
+	for _, f := range dirs {
+		if f.name != "." {
+			err = os.Mkdir(target+f.name, f.permissions)
+			check(err, "restoring directory")
+		}
+	}
+
+	// start restoring.
+	// we restore 3 data files at a time, for higher throughput.
+	// we start the first & last data files first. those are
+	workc := make(chan *restore, len(restores))
+	donec := make(chan struct{}, 1)
+	worker := func() {
+		for {
+			restorePrevious(<-workc)
+			donec <- struct{}{}
+		}
+	}
+	go worker()
+	go worker()
+	go worker()
+
+	for _, rest := range restores {
+		workc <- rest
+	}
+	for i := 0; i < len(restores); i++ {
+		<-donec
+	}
+
+	// restore mtimes for directories
+	for _, f := range dirs {
+		err = os.Chtimes(target+f.name, f.mtime, f.mtime)
+		check(err, "setting mtime for restored directory")
 	}
 }

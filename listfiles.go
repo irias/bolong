@@ -27,7 +27,7 @@ func listfiles(args []string) {
 		os.Exit(2)
 	}
 
-	backups, err := findBackups(*name)
+	backups, err := findBackupChain(*name)
 	check(err, "finding backup")
 	idx, err := readIndex(backups[0])
 	check(err, "parsing index")

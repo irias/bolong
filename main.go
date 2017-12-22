@@ -111,7 +111,7 @@ func main() {
 	case "backup":
 		backupCmd(args)
 	case "restore":
-		restore(args)
+		restoreCmd(args)
 	case "list":
 		list(args)
 	case "listfiles":
