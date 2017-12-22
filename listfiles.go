@@ -15,12 +15,7 @@ func listfiles(args []string) {
 		log.Println("usage: bolong [flags] listflags [flags]")
 		fs.PrintDefaults()
 	}
-	err := fs.Parse(args)
-	if err != nil {
-		log.Println(err)
-		fs.Usage()
-		os.Exit(2)
-	}
+	fs.Parse(args)
 	args = fs.Args()
 	if len(args) != 0 {
 		fs.Usage()

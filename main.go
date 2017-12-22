@@ -53,6 +53,7 @@ func main() {
 		log.Println("bolong [flags] list")
 		log.Println("bolong [flags] listfiles [flags]")
 		log.Println("bolong [flags] version")
+		log.Println("bolong [flags] help")
 		flag.PrintDefaults()
 	}
 	flag.Parse()
@@ -79,6 +80,7 @@ func main() {
 		if config.Local.Path == "" {
 			log.Print(`field "local" must be set for kind "local"`)
 			printExampleConfig()
+			os.Exit(2)
 		}
 		path := config.Local.Path
 		if !strings.HasSuffix(path, "/") {
@@ -92,6 +94,7 @@ func main() {
 		if config.GoogleS3.AccessKey == "" || config.GoogleS3.Secret == "" || config.GoogleS3.Bucket == "" || config.GoogleS3.Path == "" {
 			log.Print(`fields "googles3.accessKey", "googles3.secret", googles3.bucket" and  "googles3.path" must be set`)
 			printExampleConfig()
+			os.Exit(2)
 		}
 		path := config.GoogleS3.Path
 		if !strings.HasPrefix(path, "/") || !strings.HasSuffix(path, "/") {
@@ -101,6 +104,7 @@ func main() {
 	case "":
 		log.Print(`missing field "kind", must be "local" or "googles3"`)
 		printExampleConfig()
+		os.Exit(2)
 	default:
 		log.Fatalf(`unknown remote kind "%s"`, config.Kind)
 	}
@@ -118,6 +122,8 @@ func main() {
 		listfiles(args)
 	case "version":
 		_version(args)
+	case "help":
+		help(args)
 	default:
 		flag.Usage()
 		os.Exit(1)
@@ -138,7 +144,6 @@ example config file:
 	"passphrase": "your secret passphrase"
 }
 `)
-	os.Exit(2)
 }
 
 func findConfigPath() {
@@ -154,11 +159,13 @@ func findConfigPath() {
 		if !os.IsNotExist(err) {
 			log.Print("cannot find a .bolong.json up in directory hierarchy")
 			printExampleConfig()
+				os.Exit(2)
 		}
 		ndir := path.Dir(dir)
 		if ndir == dir {
 			log.Print("cannot find a .bolong.json up in directory hierarchy")
 			printExampleConfig()
+			os.Exit(2)
 		}
 		dir = ndir
 	}

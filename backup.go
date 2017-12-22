@@ -21,12 +21,7 @@ func backupCmd(args []string) {
 		fs.PrintDefaults()
 	}
 	verbose := fs.Bool("verbose", false, "print files being backed up")
-	err := fs.Parse(args)
-	if err != nil {
-		log.Println(err)
-		fs.Usage()
-		os.Exit(2)
-	}
+	fs.Parse(args)
 	args = fs.Args()
 
 	dir := "."
