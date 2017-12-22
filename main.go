@@ -53,6 +53,7 @@ func main() {
 		log.Println("bolong [flags] restore [flags] destination [path-regexp ...]")
 		log.Println("bolong [flags] list")
 		log.Println("bolong [flags] listfiles [flags]")
+		log.Println("bolong [flags] dumpindex [name]")
 		log.Println("bolong [flags] version")
 		log.Println("bolong [flags] help")
 		flag.PrintDefaults()
@@ -126,6 +127,8 @@ func main() {
 		list(args)
 	case "listfiles":
 		listfiles(args)
+	case "dumpindex":
+		dumpindex(args)
 	case "version":
 		_version(args)
 	case "help":
