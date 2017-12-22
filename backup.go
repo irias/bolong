@@ -11,10 +11,9 @@ import (
 	"regexp"
 	"strings"
 	"syscall"
-	"time"
 )
 
-func backupCmd(args []string) {
+func backupCmd(args []string, name string) {
 	fs := flag.NewFlagSet("backup", flag.ExitOnError)
 	fs.Usage = func() {
 		log.Println("usage: bolong [flags] backup [flags] directory")
@@ -142,7 +141,6 @@ func backupCmd(args []string) {
 		}
 	}()
 
-	name := time.Now().UTC().Format("20060102-150405")
 	dataPath := fmt.Sprintf("%s.data", name)
 	var data io.WriteCloser
 	data, err = remote.Create(dataPath)

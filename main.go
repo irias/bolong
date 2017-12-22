@@ -7,6 +7,7 @@ import (
 	"os"
 	"path"
 	"strings"
+	"time"
 )
 
 var (
@@ -108,12 +109,17 @@ func main() {
 	default:
 		log.Fatalf(`unknown remote kind "%s"`, config.Kind)
 	}
+	if config.Passphrase == "" {
+		log.Fatalln("passphrase cannot be empty")
+	}
 
 	cmd := args[0]
 	args = args[1:]
 	switch cmd {
 	case "backup":
-		backupCmd(args)
+		// create name from timestamp now, for simpler testcode
+		name := time.Now().UTC().Format("20060102-150405")
+		backupCmd(args, name)
 	case "restore":
 		restoreCmd(args)
 	case "list":
@@ -159,7 +165,7 @@ func findConfigPath() {
 		if !os.IsNotExist(err) {
 			log.Print("cannot find a .bolong.json up in directory hierarchy")
 			printExampleConfig()
-				os.Exit(2)
+			os.Exit(2)
 		}
 		ndir := path.Dir(dir)
 		if ndir == dir {
