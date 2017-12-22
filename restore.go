@@ -170,7 +170,7 @@ func restoreCmd(args []string) {
 
 	// start restoring.
 	// we restore 3 data files at a time, for higher throughput.
-	// we start the first & last data files first. those are
+	// we start the first & last data files first. those are most likely to be big and dominate the time it takes to restore.
 	workc := make(chan *restore, len(restores))
 	donec := make(chan struct{}, 1)
 	worker := func() {
@@ -183,8 +183,14 @@ func restoreCmd(args []string) {
 	go worker()
 	go worker()
 
-	for _, rest := range restores {
-		workc <- rest
+	if len(restores) > 0 {
+		workc <- restores[0]
+	}
+	if len(restores) > 1 {
+		workc <- restores[len(restores)-1]
+		for _, rest := range restores[1 : len(restores)-1] {
+			workc <- rest
+		}
 	}
 	for i := 0; i < len(restores); i++ {
 		<-donec
