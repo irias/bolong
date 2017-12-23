@@ -16,7 +16,7 @@ import (
 func backupCmd(args []string, name string) {
 	fs := flag.NewFlagSet("backup", flag.ExitOnError)
 	fs.Usage = func() {
-		log.Println("usage: bolong [flags] backup [flags] directory")
+		log.Println("usage: bolong [flags] backup [flags] [directory]")
 		fs.PrintDefaults()
 	}
 	verbose := fs.Bool("verbose", false, "print files being backed up")
@@ -232,6 +232,7 @@ func backupCmd(args []string, name string) {
 				delete(unseen, relpath)
 				if !fileChanged(of, nf) {
 					if !nf.isDir {
+						nf.dataOffset = of.dataOffset
 						// these indices are against the index file from the previous incremental backup.
 						// we fix up these indices later on, after we know which previous backups are still referenced.
 						prevIndex := of.previousIndex
@@ -329,52 +330,63 @@ func backupCmd(args []string, name string) {
 		backups, err := listBackups()
 		check(err, "listing backups for cleaning up old backups")
 
+		// cleanup full backups, and everything before that
 		fullSeen := 0
-		for i := len(backups) - 1; i > 0; i-- {
-			if !backups[i].incremental {
-				fullSeen++
+		for i := len(backups) - 1; i > 0 && config.FullKeep > 0; i-- {
+			if backups[i].incremental {
+				continue
 			}
-			if fullSeen >= config.IncrementalForFullKeep {
-				for j := 0; j < i; j++ {
-					if backups[j].incremental {
-						if *verbose {
-							log.Println("cleaning up old incremental backup", backups[j].name)
-						}
-						err = remote.Delete(backups[j].name + ".data")
-						if err != nil {
-							log.Println("removing old incremental backup:", err)
-						}
-						err = remote.Delete(backups[j].name + ".index1.incr")
-						if err != nil {
-							log.Println("removing old incremental backup:", err)
-						}
-					}
+			fullSeen++
+			if fullSeen < config.FullKeep {
+				continue
+			}
+			for j := 0; j < i; j++ {
+				if *verbose {
+					log.Println("cleaning up old backup", backups[j].name)
 				}
-				break
+				err = remote.Delete(backups[j].name + ".data")
+				if err != nil {
+					log.Println("removing old backup:", err)
+				}
+				ext := "full"
+				if backups[j].incremental {
+					ext = "incr"
+				}
+				err = remote.Delete(backups[j].name + ".index1." + ext)
+				if err != nil {
+					log.Println("removing old backup:", err)
+				}
 			}
+			backups = backups[:i+1]
+			break
 		}
 
 		fullSeen = 0
 		for i := len(backups) - 1; i > 0; i-- {
-			if !backups[i].incremental {
-				fullSeen++
+			if backups[i].incremental {
+				continue
 			}
-			if fullSeen >= config.FullKeep {
-				for j := 0; j < i; j++ {
-					if *verbose {
-						log.Println("cleaning up old full backup", backups[j].name)
-					}
-					err = remote.Delete(backups[j].name + ".data")
-					if err != nil {
-						log.Println("removing old full backup:", err)
-					}
-					err = remote.Delete(backups[j].name + ".index1.full")
-					if err != nil {
-						log.Println("removing old full backup:", err)
-					}
+			fullSeen++
+			if fullSeen < config.IncrementalForFullKeep {
+				continue
+			}
+			for j := 0; j < i; j++ {
+				if !backups[j].incremental {
+					continue
 				}
-				break
+				if *verbose {
+					log.Println("cleaning up old incremental backup", backups[j].name)
+				}
+				err = remote.Delete(backups[j].name + ".data")
+				if err != nil {
+					log.Println("removing old incremental backup:", err)
+				}
+				err = remote.Delete(backups[j].name + ".index1.incr")
+				if err != nil {
+					log.Println("removing old incremental backup:", err)
+				}
 			}
+			break
 		}
 	}
 }
