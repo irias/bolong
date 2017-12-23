@@ -29,6 +29,26 @@ i 20170103-122334 2423422
 
 */
 
+type index struct {
+	dataSize int64
+	previous []previous
+	add      []string
+	delete   []string
+	contents []*file
+}
+
+type file struct {
+	isDir         bool
+	permissions   os.FileMode
+	mtime         time.Time
+	size          int64
+	user          string
+	group         string
+	dataOffset    int64
+	previousIndex int
+	name          string
+}
+
 type previous struct {
 	incremental bool
 	name        string
@@ -64,26 +84,6 @@ func parsePrevious(s string) (p previous, err error) {
 		err = fmt.Errorf(`bad size "%s" in previous: %s`, t[2], err)
 	}
 	return
-}
-
-type index struct {
-	dataSize int64
-	previous []previous
-	add      []string
-	delete   []string
-	contents []*file
-}
-
-type file struct {
-	isDir         bool
-	permissions   os.FileMode
-	mtime         time.Time
-	size          int64
-	user          string
-	group         string
-	dataOffset    int64
-	previousIndex int
-	name          string
 }
 
 func parseFile(nprevious int, line string) (*file, error) {
