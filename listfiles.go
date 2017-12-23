@@ -15,19 +15,14 @@ func listfiles(args []string) {
 		log.Println("usage: bolong [flags] listflags [flags]")
 		fs.PrintDefaults()
 	}
-	err := fs.Parse(args)
-	if err != nil {
-		log.Println(err)
-		fs.Usage()
-		os.Exit(2)
-	}
+	fs.Parse(args)
 	args = fs.Args()
 	if len(args) != 0 {
 		fs.Usage()
 		os.Exit(2)
 	}
 
-	backups, err := findBackups(*name)
+	backups, err := findBackupChain(*name)
 	check(err, "finding backup")
 	idx, err := readIndex(backups[0])
 	check(err, "parsing index")

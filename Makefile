@@ -2,9 +2,13 @@ build:
 	go build -i
 
 test:
+	go test -cover
 	go vet
 	golint
-	go test -cover
+
+cover:
+	go test -coverprofile=coverage.out
+	go tool cover -html=coverage.out
 
 release:
 	env GOOS=linux GOARCH=amd64 ./release.sh

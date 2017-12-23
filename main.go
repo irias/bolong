@@ -7,31 +7,34 @@ import (
 	"os"
 	"path"
 	"strings"
+	"time"
 )
+
+type configuration struct {
+	Kind  string
+	Local struct {
+		Path string
+	}
+	GoogleS3 struct {
+		AccessKey,
+		Secret,
+		Bucket,
+		Path string
+	}
+	Include                []string
+	Exclude                []string
+	IncrementalsPerFull    int
+	FullKeep               int
+	IncrementalForFullKeep int
+	Passphrase             string
+}
 
 var (
 	version    = "dev"
 	configPath = flag.String("config", "", "path to config file")
 	remotePath = flag.String("path", "", "path at remote storage, overrides config file")
-	config     struct {
-		Kind  string
-		Local struct {
-			Path string
-		}
-		GoogleS3 struct {
-			AccessKey,
-			Secret,
-			Bucket,
-			Path string
-		}
-		Include                []string
-		Exclude                []string
-		IncrementalsPerFull    int
-		FullKeep               int
-		IncrementalForFullKeep int
-		Passphrase             string
-	}
-	remote destination
+	config     configuration
+	remote     destination
 )
 
 func check(err error, msg string) {
@@ -52,7 +55,9 @@ func main() {
 		log.Println("bolong [flags] restore [flags] destination [path-regexp ...]")
 		log.Println("bolong [flags] list")
 		log.Println("bolong [flags] listfiles [flags]")
+		log.Println("bolong [flags] dumpindex [name]")
 		log.Println("bolong [flags] version")
+		log.Println("bolong [flags] help")
 		flag.PrintDefaults()
 	}
 	flag.Parse()
@@ -62,6 +67,34 @@ func main() {
 		os.Exit(1)
 	}
 
+	parseConfig()
+
+	cmd := args[0]
+	args = args[1:]
+	switch cmd {
+	case "backup":
+		// create name from timestamp now, for simpler testcode
+		name := time.Now().UTC().Format("20060102-150405")
+		backupCmd(args, name)
+	case "restore":
+		restoreCmd(args)
+	case "list":
+		list(args)
+	case "listfiles":
+		listfiles(args)
+	case "dumpindex":
+		dumpindex(args)
+	case "version":
+		_version(args)
+	case "help":
+		help(args)
+	default:
+		flag.Usage()
+		os.Exit(1)
+	}
+}
+
+func parseConfig() {
 	if *configPath == "" {
 		findConfigPath()
 	}
@@ -72,6 +105,12 @@ func main() {
 	check(err, "parsing config file")
 
 	switch config.Kind {
+	default:
+		log.Fatalf(`unknown remote kind "%s"`, config.Kind)
+	case "":
+		log.Print(`missing field "kind", must be "local" or "googles3"`)
+		printExampleConfig()
+		os.Exit(2)
 	case "local":
 		if *remotePath != "" {
 			config.Local.Path = *remotePath
@@ -79,6 +118,7 @@ func main() {
 		if config.Local.Path == "" {
 			log.Print(`field "local" must be set for kind "local"`)
 			printExampleConfig()
+			os.Exit(2)
 		}
 		path := config.Local.Path
 		if !strings.HasSuffix(path, "/") {
@@ -92,35 +132,16 @@ func main() {
 		if config.GoogleS3.AccessKey == "" || config.GoogleS3.Secret == "" || config.GoogleS3.Bucket == "" || config.GoogleS3.Path == "" {
 			log.Print(`fields "googles3.accessKey", "googles3.secret", googles3.bucket" and  "googles3.path" must be set`)
 			printExampleConfig()
+			os.Exit(2)
 		}
 		path := config.GoogleS3.Path
 		if !strings.HasPrefix(path, "/") || !strings.HasSuffix(path, "/") {
 			log.Fatal(`field "googles3.path" must start and end with a slash`)
 		}
 		remote = &googleS3{config.GoogleS3.Bucket, path}
-	case "":
-		log.Print(`missing field "kind", must be "local" or "googles3"`)
-		printExampleConfig()
-	default:
-		log.Fatalf(`unknown remote kind "%s"`, config.Kind)
 	}
-
-	cmd := args[0]
-	args = args[1:]
-	switch cmd {
-	case "backup":
-		backupCmd(args)
-	case "restore":
-		restore(args)
-	case "list":
-		list(args)
-	case "listfiles":
-		listfiles(args)
-	case "version":
-		_version(args)
-	default:
-		flag.Usage()
-		os.Exit(1)
+	if config.Passphrase == "" {
+		log.Fatalln("passphrase cannot be empty")
 	}
 }
 
@@ -138,7 +159,6 @@ example config file:
 	"passphrase": "your secret passphrase"
 }
 `)
-	os.Exit(2)
 }
 
 func findConfigPath() {
@@ -154,11 +174,13 @@ func findConfigPath() {
 		if !os.IsNotExist(err) {
 			log.Print("cannot find a .bolong.json up in directory hierarchy")
 			printExampleConfig()
+			os.Exit(2)
 		}
 		ndir := path.Dir(dir)
 		if ndir == dir {
 			log.Print("cannot find a .bolong.json up in directory hierarchy")
 			printExampleConfig()
+			os.Exit(2)
 		}
 		dir = ndir
 	}

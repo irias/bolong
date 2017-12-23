@@ -13,12 +13,7 @@ func _version(args []string) {
 		log.Println("usage: bolong [flags] version")
 		fs.PrintDefaults()
 	}
-	err := fs.Parse(args)
-	if err != nil {
-		log.Println(err)
-		fs.Usage()
-		os.Exit(2)
-	}
+	fs.Parse(args)
 	args = fs.Args()
 	if len(args) != 0 {
 		fs.Usage()

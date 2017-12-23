@@ -1,15 +1,15 @@
 Bolong is a simple, secure and fast command-line backup and restore tool.
 
 Features:
-- Full and incremental backups. You can configure how many incremental backups are made before a full backup is created. Incremental backups only store files that have different size/mtime/permissions compared to the previous backup. We don't compare the file contents.
-- Stores data either in the "local" file system (which can be a mounted network disk) or in Google's S3 storage clone (not AWS, only Google does proper streaming uploads).
+- Full and incremental backups. You can configure how many incremental backups are made before a full backup is created. Incremental backups only store files that have different size/mtime/permissions compared to the previous backup. Bolong does not compare file contents.
+- Stores data either in the "local" file system (which can be a mounted network disk) or in Google's S3 storage clone (not AWS, only Google does reasonable streaming uploads).
 - Compression with lz4. Compression rate is not too great, but it's very fast, so won't slow restores down.
 - Encryption and authenticated data. A cloud storage provider cannot read your data, and cannot tamper with it.
 
 Non-features:
 - Deduplication. It's a nice feature, but too much code/complexity for our purposes. Simple backups are more likely to be reliable backups.
 
-Bugs:
+Limitations:
 - Symlinks cannot be backed up properly. Symlinks to files will be backed up as the file pointed to, but not restored as a symlink. Symlinks to directories will result in an error, for now you must exclude them from backups.
 
 
@@ -47,16 +47,16 @@ Next, list the available backups:
 
 Finally, we can restore one of the available backups. By default, the latest backup is restored:
 
-	bolong restore /path/to/restore/to
+	bolong restore path/to/restore/to
 
 Again, add the "-verbose" flag for a list of files restored. You can also add regular expressions to only restore matching files.
 
-	bolong -path /myproject/ restore -name 20171001-230002 -verbose /path/to/restore/to '\.go$'
+	bolong -path /myproject/ restore -name 20171001-230002 -verbose path/to/restore/to '\.go$'
 
 
 # Compression
 
-We use lz4 to compress all data. It so fast you can apply it to all files, so there is no need to complicate the code and configuration with applying compression selectively. Decompression is also very fast, so it won't slow down your restores.  The price we pay is a compression ratio that isn't too great.
+Bolong uses lz4 to compress all data. It so fast you can apply it to all files, so there is no need to complicate the code and configuration with applying compression selectively. Decompression is also very fast, so it won't slow down your restores.  The price you pay is a compression ratio that isn't too great.
 
 # Encryption
 
@@ -69,11 +69,11 @@ Your files are protected by a passphrase. Each backed up file starts with a 32 b
 Each backup is made of two files:
 
 1. Data file, containing the contents of all files stored in this backup.
-2. Index file, listing all files and meta information in this backup (file name, regular/directory, permissions, mtime, and offset into data file (we don't currently store owner/group). An incremental backup lists all files that would be restored for a restore operation, not only the modified files.
+2. Index file, listing all files and meta information in this backup (file name, regular/directory, permissions, mtime, and offset into data file (bolong doesn't currently store owner/group). An incremental backup lists all files that would be restored for a restore operation, not only the modified files.
 
 Each file starts with a 32 byte salt. Followed by data in the DARE format (Data at Rest, see https://github.com/minio/sio).
 
-Backups, and the file names are named after the time they were initiated (in UTC). A backup name has the form YYYYMMDD-hhmmdd. The file names have ".data" and either ".index.full" or ".index.incr" appended.
+Backups, and the file names are named after the time they were initiated (in UTC). A backup name has the form YYYYMMDD-hhmmdd. The file names have ".data" and either ".index1.full" or ".index1.incr" appended.
 
 # License
 
@@ -81,7 +81,7 @@ This software is released under an MIT license. See LICENSE.MD.
 
 # Dependencies
 
-All dependencies are vendored in (include) in this repositories:
+All dependencies are vendored in (included) in this repositories:
 
 	https://github.com/pierrec/lz4 (BSD license)
 	https://github.com/minio/sio (Apache license)
@@ -93,7 +93,6 @@ For feedback, contact Mechiel Lukkien at mechiel@ueber.net.
 
 # Todo
 
-- in index files, store the name of the backup + dataoffset for incremental backups. so we only ever have to read 1 index file when we want to restore, and can easily calculate how much total data we have to fetch (also add the compressed/encrypted sizes of the incrementals+1 full in the index file).
 - is our behaviour correct when restoring to a directory that already has some files?  we currently fail when we try to create a file/directory that already exists.
 - store/restore owner/group of files
 - do something for symlinks

@@ -18,6 +18,10 @@ type backup struct {
 	incremental bool
 }
 
+func (b backup) GoString() string {
+	return fmt.Sprintf("backup{name: %s, incremental: %v}", b.name, b.incremental)
+}
+
 // return backups in order of timestamp
 func listBackups() ([]*backup, error) {
 	var r []*backup
@@ -26,11 +30,11 @@ func listBackups() ([]*backup, error) {
 		return nil, fmt.Errorf("listing remote: %s", err)
 	}
 	for _, name := range l {
-		if strings.HasSuffix(name, ".index.full") {
-			r = append(r, &backup{name[:len(name)-len(".index.full")], false})
+		if strings.HasSuffix(name, ".index1.full") {
+			r = append(r, &backup{name[:len(name)-len(".index1.full")], false})
 		}
-		if strings.HasSuffix(name, ".index.incr") {
-			r = append(r, &backup{name[:len(name)-len(".index.full")], true})
+		if strings.HasSuffix(name, ".index1.incr") {
+			r = append(r, &backup{name[:len(name)-len(".index1.incr")], true})
 		}
 	}
 	return r, nil
@@ -41,6 +45,9 @@ func findBackup(name string) (*backup, error) {
 	if err != nil {
 		return nil, fmt.Errorf("listing backups: %s", err)
 	}
+	if name == "latest" && len(l) > 0 {
+		return l[len(l)-1], nil
+	}
 	for _, b := range l {
 		if b.name == name {
 			return b, nil
@@ -50,7 +57,7 @@ func findBackup(name string) (*backup, error) {
 }
 
 // find the backup, and its predecessors, up until the first full backup
-func findBackups(name string) ([]*backup, error) {
+func findBackupChain(name string) ([]*backup, error) {
 	l, err := listBackups()
 	if err != nil {
 		return nil, fmt.Errorf("listing backups: %s", err)
@@ -77,12 +84,7 @@ func list(args []string) {
 		log.Println("usage: bolong [flags] list")
 		fs.PrintDefaults()
 	}
-	err := fs.Parse(args)
-	if err != nil {
-		log.Println(err)
-		fs.Usage()
-		os.Exit(2)
-	}
+	fs.Parse(args)
 	args = fs.Args()
 	if len(args) != 0 {
 		fs.Usage()
