@@ -11,6 +11,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"time"
 )
 
 type restore struct {
@@ -26,6 +27,7 @@ func restoreCmd(args []string) {
 		fs.PrintDefaults()
 	}
 	verbose := fs.Bool("verbose", false, "print restored files")
+	quiet := fs.Bool("quiet", false, "be quiet, do not show progress")
 	name := fs.String("name", "latest", "name of backup to restore")
 	err := fs.Parse(args)
 	if err != nil {
@@ -48,10 +50,12 @@ func restoreCmd(args []string) {
 		regexps = append(regexps, re)
 	}
 
-	log.Printf("restoring %s to %s\n", *name, target)
-
 	backup, err := findBackup(*name)
 	check(err, "looking up backup")
+
+	if !*quiet {
+		log.Printf("restoring %s to %s\n", backup.name, target)
+	}
 
 	idx, err := readIndex(backup)
 	check(err, "parsing index")
@@ -130,11 +134,14 @@ func restoreCmd(args []string) {
 		target += "/"
 	}
 
+	transferred := make(chan int, 100)
+
 	restorePrevious := func(rest *restore) {
 		dataPath := fmt.Sprintf("%s.data", rest.previous.name)
 		var data io.ReadCloser
 		data, err := remote.Open(dataPath)
 		check(err, "open data file")
+		data = &readCounter{data, transferred}
 		data, err = newSafeReader(data)
 		check(err, "opening safe reader")
 		defer func() {
@@ -209,8 +216,79 @@ func restoreCmd(args []string) {
 			workc <- rest
 		}
 	}
+	var (
+		dataTransferred = int64(0)
+		ntick           = 0
+		progress        [5]int64 // circle history of dataTransferred
+		unitSize        float64
+		unit            string
+		prevLine        = ""
+	)
+
+	if dataSize > 1024*1024*1024 {
+		unitSize = 1024 * 1024 * 1024
+		unit = "gb"
+	} else {
+		unitSize = 1024 * 1024
+		unit = "mb"
+	}
+	tick := make(chan struct{}, 1)
+	go func() {
+		for {
+			tick <- struct{}{}
+			time.Sleep(1 * time.Second)
+		}
+	}()
+
+	printTick := func() {
+		eta := ""
+		if ntick >= len(progress) {
+			delta := dataTransferred - progress[ntick%len(progress)]
+			eta = ", eta "
+			if delta > 0 {
+				secs := int64(len(progress)) * (dataSize - dataTransferred) / delta
+				hours := secs / 3600
+				mins := (secs % 3600) / 60
+				secs = secs % 60
+				if hours > 0 {
+					eta += fmt.Sprintf("%02dh", hours)
+				}
+				if mins > 0 || hours > 0 {
+					eta += fmt.Sprintf("%02dm", mins)
+				}
+				if hours == 0 {
+					eta += fmt.Sprintf("%02ds", secs)
+				}
+			} else {
+				eta += "∞"
+			}
+		}
+		line := fmt.Sprintf("%.2f/%.2f%s%s", float64(dataTransferred)/unitSize, float64(dataSize)/unitSize, unit, eta)
+		fmt.Printf("\r%-*s", len(prevLine), line)
+		prevLine = line
+		progress[ntick%len(progress)] = dataTransferred
+		ntick++
+	}
+
 	for i := 0; i < len(restores); i++ {
-		<-donec
+	Restore:
+		for {
+			select {
+			case n := <-transferred:
+				dataTransferred += int64(n)
+			case <-tick:
+				if *quiet {
+					continue
+				}
+				printTick()
+			case <-donec:
+				break Restore
+			}
+		}
+	}
+	if !*quiet {
+		printTick()
+		fmt.Println("")
 	}
 
 	// restore mtimes for directories

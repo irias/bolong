@@ -293,19 +293,19 @@ func TestMain(t *testing.T) {
 	// do a restore
 	// check that it restored all files correctly
 	resetRestoreDir()
-	restoreCmd([]string{"testdir/restore"})
+	restoreCmd([]string{"-quiet", "testdir/restore"})
 	compareTree(expTree1, fsTree("testdir/restore/"), true)
 
 	ensureTree(tree2)
 	backupCmd([]string{"testdir/workdir"}, "20171222-0002")
 	resetRestoreDir()
-	restoreCmd([]string{"testdir/restore"})
+	restoreCmd([]string{"-quiet", "testdir/restore"})
 	compareTree(expTree2, fsTree("testdir/restore/"), true)
 
 	ensureTree(tree3)
 	backupCmd([]string{"testdir/workdir"}, "20171222-0003")
 	resetRestoreDir()
-	restoreCmd([]string{"testdir/restore"})
+	restoreCmd([]string{"-quiet", "testdir/restore"})
 	compareTree(expTree3, fsTree("testdir/restore/"), true)
 
 	// so far we have 1 fulll, 2 incrementals
@@ -336,7 +336,7 @@ func TestMain(t *testing.T) {
 	ensureTree(tree3)
 	backupCmd([]string{"testdir/workdir"}, "20171222-008")
 	resetRestoreDir()
-	restoreCmd([]string{"testdir/restore", "^a/a/", "/whitelisted$"})
+	restoreCmd([]string{"-quiet", "testdir/restore", "^a/a/", "/whitelisted$"})
 	xExpTree3 := testTree{
 		files: []testFile{
 			{"a/a/test.txt", "more"},
