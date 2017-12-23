@@ -1,6 +1,7 @@
 /bolong
 /.bolong.json
 /local/
+/testdir/
 
 .hg/
 

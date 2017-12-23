@@ -18,6 +18,10 @@ type backup struct {
 	incremental bool
 }
 
+func (b backup) GoString() string {
+	return fmt.Sprintf("backup{name: %s, incremental: %v}", b.name, b.incremental)
+}
+
 // return backups in order of timestamp
 func listBackups() ([]*backup, error) {
 	var r []*backup

@@ -10,29 +10,31 @@ import (
 	"time"
 )
 
+type configuration struct {
+	Kind  string
+	Local struct {
+		Path string
+	}
+	GoogleS3 struct {
+		AccessKey,
+		Secret,
+		Bucket,
+		Path string
+	}
+	Include                []string
+	Exclude                []string
+	IncrementalsPerFull    int
+	FullKeep               int
+	IncrementalForFullKeep int
+	Passphrase             string
+}
+
 var (
 	version    = "dev"
 	configPath = flag.String("config", "", "path to config file")
 	remotePath = flag.String("path", "", "path at remote storage, overrides config file")
-	config     struct {
-		Kind  string
-		Local struct {
-			Path string
-		}
-		GoogleS3 struct {
-			AccessKey,
-			Secret,
-			Bucket,
-			Path string
-		}
-		Include                []string
-		Exclude                []string
-		IncrementalsPerFull    int
-		FullKeep               int
-		IncrementalForFullKeep int
-		Passphrase             string
-	}
-	remote destination
+	config     configuration
+	remote     destination
 )
 
 func check(err error, msg string) {
@@ -65,6 +67,34 @@ func main() {
 		os.Exit(1)
 	}
 
+	parseConfig()
+
+	cmd := args[0]
+	args = args[1:]
+	switch cmd {
+	case "backup":
+		// create name from timestamp now, for simpler testcode
+		name := time.Now().UTC().Format("20060102-150405")
+		backupCmd(args, name)
+	case "restore":
+		restoreCmd(args)
+	case "list":
+		list(args)
+	case "listfiles":
+		listfiles(args)
+	case "dumpindex":
+		dumpindex(args)
+	case "version":
+		_version(args)
+	case "help":
+		help(args)
+	default:
+		flag.Usage()
+		os.Exit(1)
+	}
+}
+
+func parseConfig() {
 	if *configPath == "" {
 		findConfigPath()
 	}
@@ -75,6 +105,12 @@ func main() {
 	check(err, "parsing config file")
 
 	switch config.Kind {
+	default:
+		log.Fatalf(`unknown remote kind "%s"`, config.Kind)
+	case "":
+		log.Print(`missing field "kind", must be "local" or "googles3"`)
+		printExampleConfig()
+		os.Exit(2)
 	case "local":
 		if *remotePath != "" {
 			config.Local.Path = *remotePath
@@ -103,39 +139,9 @@ func main() {
 			log.Fatal(`field "googles3.path" must start and end with a slash`)
 		}
 		remote = &googleS3{config.GoogleS3.Bucket, path}
-	case "":
-		log.Print(`missing field "kind", must be "local" or "googles3"`)
-		printExampleConfig()
-		os.Exit(2)
-	default:
-		log.Fatalf(`unknown remote kind "%s"`, config.Kind)
 	}
 	if config.Passphrase == "" {
 		log.Fatalln("passphrase cannot be empty")
-	}
-
-	cmd := args[0]
-	args = args[1:]
-	switch cmd {
-	case "backup":
-		// create name from timestamp now, for simpler testcode
-		name := time.Now().UTC().Format("20060102-150405")
-		backupCmd(args, name)
-	case "restore":
-		restoreCmd(args)
-	case "list":
-		list(args)
-	case "listfiles":
-		listfiles(args)
-	case "dumpindex":
-		dumpindex(args)
-	case "version":
-		_version(args)
-	case "help":
-		help(args)
-	default:
-		flag.Usage()
-		os.Exit(1)
 	}
 }
 
