@@ -7,6 +7,7 @@ import (
 	"io/ioutil"
 	"log"
 	"os"
+	"path"
 	"regexp"
 	"sort"
 	"strings"
@@ -56,20 +57,36 @@ func restoreCmd(args []string) {
 	check(err, "parsing index")
 
 	idx.previous = append(idx.previous, previous{backup.incremental, backup.name, idx.dataSize})
-	restoreMap := map[int]*restore{}
-	restores := []*restore{}
-	var dataSize int64
-	var totalSize int64
-	dirs := []*file{}
-	nfiles := 0
+	var (
+		restoreMap = map[int]*restore{}
+		restores   []*restore
+		dataSize   int64
+		totalSize  int64
+		nfiles     int
+		dirs       []*file
+		needDirs   = map[string]struct{}{}
+	)
 	for _, f := range idx.contents {
+		if f.isDir {
+			dirs = append(dirs, f)
+		}
 		if len(regexps) > 0 && !matchAny(regexps, f.name) {
 			continue
 		}
 		if f.isDir {
-			dirs = append(dirs, f)
+			needDirs[f.name] = struct{}{}
 			continue
 		}
+
+		dir := path.Dir(f.name)
+		for {
+			needDirs[dir] = struct{}{}
+			if dir == "." {
+				break
+			}
+			dir = path.Dir(dir)
+		}
+
 		prevIndex := f.previousIndex
 		if prevIndex < 0 {
 			prevIndex = len(idx.previous) - 1
@@ -162,7 +179,7 @@ func restoreCmd(args []string) {
 
 	// restore all directories first. ensures creating files always works.
 	for _, f := range dirs {
-		if f.name != "." {
+		if _, ok := needDirs[f.name]; ok && f.name != "." {
 			err = os.Mkdir(target+f.name, f.permissions)
 			check(err, "restoring directory")
 		}
@@ -198,7 +215,9 @@ func restoreCmd(args []string) {
 
 	// restore mtimes for directories
 	for _, f := range dirs {
-		err = os.Chtimes(target+f.name, f.mtime, f.mtime)
-		check(err, "setting mtime for restored directory")
+		if _, ok := needDirs[f.name]; ok {
+			err = os.Chtimes(target+f.name, f.mtime, f.mtime)
+			check(err, "setting mtime for restored directory")
+		}
 	}
 }
