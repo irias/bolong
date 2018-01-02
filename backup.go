@@ -9,6 +9,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
 	"syscall"
 )
@@ -302,6 +303,10 @@ func backupCmd(args []string, name string) {
 		for _, f := range unseen {
 			nidx.delete = append(nidx.delete, f.name)
 		}
+		// sort for better compression rate of index
+		sort.Slice(nidx.delete, func(i, j int) bool {
+			return nidx.delete[i] < nidx.delete[j]
+		})
 	}
 
 	err = data.Close()
