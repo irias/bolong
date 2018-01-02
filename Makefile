@@ -16,5 +16,8 @@ release:
 	env GOOS=darwin GOARCH=amd64 ./release.sh
 	env GOOS=windows GOARCH=amd64 ./release.sh
 
+fmt:
+	gofmt -w *.go
+
 clean:
 	go clean
