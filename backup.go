@@ -7,7 +7,6 @@ import (
 	"log"
 	"os"
 	"os/signal"
-	"os/user"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -212,20 +211,7 @@ func backupCmd(args []string, name string) {
 		if !info.IsDir() {
 			size = info.Size()
 		}
-		owner := "u"
-		group := "g"
-		if stat, ok := info.Sys().(*syscall.Stat_t); ok {
-			owner = fmt.Sprintf("%d", stat.Uid)
-			group = fmt.Sprintf("%d", stat.Gid)
-			u, err := user.LookupId(owner)
-			if err == nil && u.Username != "" {
-				owner = u.Username
-			}
-			g, err := user.LookupGroupId(group)
-			if err == nil && g.Name != "" {
-				group = g.Name
-			}
-		}
+		owner, group := userGroupName(info)
 		nf := &file{
 			info.IsDir(),
 			info.Mode()&os.ModeSymlink != 0,
