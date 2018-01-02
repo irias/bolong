@@ -7,9 +7,11 @@ import (
 	"io/ioutil"
 	"log"
 	"os"
+	"os/user"
 	"path"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -53,6 +55,11 @@ func restoreCmd(args []string) {
 	backup, err := findBackup(*name)
 	check(err, "looking up backup")
 
+	euid := os.Geteuid()
+	egid := os.Getegid()
+	if !*quiet && euid != 0 {
+		log.Printf("warning: not running as root, so not restoring user/group file ownership\n")
+	}
 	if !*quiet {
 		log.Printf("restoring %s to %s\n", backup.name, target)
 	}
@@ -136,6 +143,82 @@ func restoreCmd(args []string) {
 
 	transferred := make(chan int, 100)
 
+	users := map[string]int{}
+	groups := map[string]int{}
+	lookupUser := func(name string) int {
+		uid, ok := users[name]
+		if ok {
+			return uid
+		}
+
+		u, err := user.Lookup(name)
+		if err == nil {
+			id, err := strconv.ParseInt(u.Uid, 10, 64)
+			if err != nil {
+				log.Printf("uid %q (%q) not an int, not restoring that file owner\n", u.Uid, name)
+				return -1
+			}
+			return int(id)
+		}
+
+		if _, ok := err.(user.UnknownUserError); !ok {
+			check(err, "user lookup")
+		}
+		id, err := strconv.ParseInt(u.Uid, 10, 64)
+		if err == nil {
+			return int(id)
+		}
+		log.Printf("unknown user %q, not restoring that file owner\n", name)
+		return -1
+	}
+	lookupGroup := func(name string) int {
+		gid, ok := groups[name]
+		if ok {
+			return gid
+		}
+
+		g, err := user.LookupGroup(name)
+		if err == nil {
+			id, err := strconv.ParseInt(g.Gid, 10, 64)
+			if err != nil {
+				log.Printf("gid %q (%q) not an int, not restoring that file group\n", g.Gid, name)
+				return -1
+			}
+			return int(id)
+		}
+
+		if _, ok := err.(user.UnknownGroupError); !ok {
+			check(err, "group lookup")
+		}
+		id, err := strconv.ParseInt(g.Gid, 10, 64)
+		if err == nil {
+			return int(id)
+		}
+		log.Printf("unknown group %q, not restoring that file group\n", name)
+		return -1
+	}
+	lchown := func(f *file, tpath string) {
+		if euid != 0 {
+			return
+		}
+		uid := lookupUser(f.user)
+		users[f.user] = uid
+		gid := lookupGroup(f.group)
+		users[f.group] = gid
+		if uid < 0 && gid < 0 {
+			return
+		}
+		if uid < 0 {
+			uid = euid
+		}
+		if gid < 0 {
+			gid = egid
+		}
+
+		err = os.Lchown(tpath, uid, gid)
+		check(err, "lchown")
+	}
+
 	restorePrevious := func(rest *restore) {
 		dataPath := fmt.Sprintf("%s.data", rest.previous.name)
 		var data io.ReadCloser
@@ -166,21 +249,36 @@ func restoreCmd(args []string) {
 				offset = file.dataOffset
 			}
 
-			f, err := os.Create(tpath)
-			check(err, "restoring file")
-			r := &io.LimitedReader{R: data, N: file.size}
-			n, err := io.Copy(f, r)
-			if n != file.size {
-				log.Fatalf("short file contents for file %s: expected to write %d, but wrote %d", file.name, file.size, n)
+			if file.isSymlink {
+				buf, err := ioutil.ReadAll(&io.LimitedReader{R: data, N: file.size})
+				check(err, "reading symlink path")
+				n := int64(len(buf))
+				if n != file.size {
+					log.Fatalf("short file contents for symlink %s: expected to read %d, but got %d", file.name, file.size, n)
+				}
+				offset += file.size
+				target := string(buf)
+				err = os.Symlink(target, tpath)
+				check(err, "creating symlink")
+				lchown(file, tpath)
+			} else {
+				f, err := os.Create(tpath)
+				check(err, "restoring file")
+				r := &io.LimitedReader{R: data, N: file.size}
+				n, err := io.Copy(f, r)
+				if n != file.size {
+					log.Fatalf("short file contents for file %s: expected to write %d, but wrote %d", file.name, file.size, n)
+				}
+				offset += file.size
+				check(err, "restoring contents of file")
+				err = f.Close()
+				check(err, "closing restored file")
+				lchown(file, tpath)
+				err = os.Chmod(tpath, file.permissions)
+				check(err, "setting permisssions on restored file")
+				err = os.Chtimes(tpath, file.mtime, file.mtime)
+				check(err, "setting mtime/atime on restored file")
 			}
-			offset += file.size
-			check(err, "restoring contents of file")
-			err = f.Close()
-			check(err, "closing restored file")
-			err = os.Chmod(tpath, file.permissions)
-			check(err, "setting permisssions on restored file")
-			err = os.Chtimes(tpath, file.mtime, file.mtime)
-			check(err, "setting mtime/atime on restored file")
 		}
 	}
 

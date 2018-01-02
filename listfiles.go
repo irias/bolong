@@ -32,13 +32,20 @@ func listfiles(args []string) {
 			name += "/"
 		}
 		if *verbose {
-			var size string
+			var kind, size, user, group string
 			if f.isDir {
 				size = fmt.Sprintf("%10s", "")
+				kind = "d"
 			} else {
+				kind = "f"
+				if f.isSymlink {
+					kind = "s"
+				}
 				size = fmt.Sprintf("%10d", f.size)
 			}
-			fmt.Printf("%04o %s %s\n", f.permissions, size, name)
+			user = fmt.Sprintf("%10s", f.user)
+			group = fmt.Sprintf("%10s", f.group)
+			fmt.Printf("%s %04o %s %s %s %s\n", kind, f.permissions, size, user, group, name)
 		} else {
 			fmt.Println(name)
 		}

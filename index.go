@@ -25,6 +25,7 @@ i 20170103-122334 2423422
 = f 644 1506578834 100 mjl mjl 0 0 path/to/another-file
 = f 644 1506578834 123123123 mjl mjl 100 0 path/to/another-file
 = f 644 1506578834 23424 mjl mjl 100 -1 path/to/new/file
+= s 644 1506578834 23424 mjl mjl 100 -1 path/to/new/symlink
 .
 
 */
@@ -39,6 +40,7 @@ type index struct {
 
 type file struct {
 	isDir         bool
+	isSymlink     bool
 	permissions   os.FileMode
 	mtime         time.Time
 	size          int64
@@ -97,8 +99,9 @@ func parseFile(nprevious int, line string) (*file, error) {
 	}
 	f := &file{}
 	switch t[0] {
+	case "s":
+		f.isSymlink = true
 	case "f":
-		f.isDir = false
 	case "d":
 		f.isDir = true
 	default:
@@ -146,6 +149,8 @@ func (f file) indexString() string {
 	kind := "f"
 	if f.isDir {
 		kind = "d"
+	} else if f.isSymlink {
+		kind = "s"
 	}
 	return fmt.Sprintf("%s %o %d %d %s %s %d %d %s", kind, f.permissions, f.mtime.Unix(), f.size, f.user, f.group, f.dataOffset, f.previousIndex, f.name)
 }

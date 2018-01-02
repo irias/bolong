@@ -7,6 +7,7 @@ import (
 	"log"
 	"os"
 	"os/signal"
+	"os/user"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -211,15 +212,30 @@ func backupCmd(args []string, name string) {
 		if !info.IsDir() {
 			size = info.Size()
 		}
+		owner := "u"
+		group := "g"
+		if stat, ok := info.Sys().(*syscall.Stat_t); ok {
+			owner = fmt.Sprintf("%d", stat.Uid)
+			group = fmt.Sprintf("%d", stat.Gid)
+			u, err := user.LookupId(owner)
+			if err == nil && u.Username != "" {
+				owner = u.Username
+			}
+			g, err := user.LookupGroupId(group)
+			if err == nil && g.Name != "" {
+				group = g.Name
+			}
+		}
 		nf := &file{
 			info.IsDir(),
+			info.Mode()&os.ModeSymlink != 0,
 			info.Mode() & os.ModePerm,
 			info.ModTime(),
 			size,
-			"o", // placeholder for owner, in the future
-			"g", // group
-			-1,  // data offset
-			-1,  // previous index, possibly updated later
+			owner,
+			group,
+			-1, // data offset
+			-1, // previous index, possibly updated later
 			relpath,
 		}
 
@@ -257,14 +273,27 @@ func backupCmd(args []string, name string) {
 			}
 		}
 
-		if !nf.isDir {
+		if nf.isDir {
+			return nil
+		}
+		nf.dataOffset = dataOffset
+		if nf.isSymlink {
+			p, err := os.Readlink(path)
+			check(err, "readlink")
+			buf := []byte(p)
+			n, err := data.Write(buf)
+			check(err, "write symlink data")
+			if n != len(buf) {
+				panic("did not write full buf")
+			}
+			nf.size = int64(n)
+		} else {
 			err := store(path, nf.size, data)
 			if err != nil {
 				log.Fatalf("writing %s: %s\n", path, err)
 			}
-			nf.dataOffset = dataOffset
-			dataOffset += nf.size
 		}
+		dataOffset += nf.size
 
 		return nil
 	})
@@ -404,7 +433,7 @@ func fileChanged(old, new *file) bool {
 	if old.name != new.name {
 		log.Fatalf("inconsistent fileChanged call, names don't match, %s != %s", old.name, new.name)
 	}
-	return old.isDir != new.isDir || old.size != new.size || old.mtime.Unix() != new.mtime.Unix() || old.permissions != new.permissions || old.user != new.user || old.group != new.group
+	return old.isDir != new.isDir || old.isSymlink != new.isSymlink || old.size != new.size || old.mtime.Unix() != new.mtime.Unix() || old.permissions != new.permissions || old.user != new.user || old.group != new.group
 }
 
 func store(path string, size int64, data io.Writer) (err error) {
