@@ -67,22 +67,25 @@ func main() {
 		os.Exit(1)
 	}
 
-	parseConfig()
-
 	cmd := args[0]
 	args = args[1:]
 	switch cmd {
 	case "backup":
+		parseConfig()
 		// create name from timestamp now, for simpler testcode
 		name := time.Now().UTC().Format("20060102-150405")
 		backupCmd(args, name)
 	case "restore":
+		parseConfig()
 		restoreCmd(args)
 	case "list":
+		parseConfig()
 		list(args)
 	case "listfiles":
+		parseConfig()
 		listfiles(args)
 	case "dumpindex":
+		parseConfig()
 		dumpindex(args)
 	case "version":
 		_version(args)
