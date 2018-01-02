@@ -389,10 +389,12 @@ func restoreCmd(args []string) {
 		fmt.Println("")
 	}
 
-	// restore mtimes for directories
+	// restore owner and mtimes for directories
 	for _, f := range dirs {
 		if _, ok := needDirs[f.name]; ok {
-			err = os.Chtimes(target+f.name, f.mtime, f.mtime)
+			tpath := target + f.name
+			lchown(f, tpath)
+			err = os.Chtimes(tpath, f.mtime, f.mtime)
 			check(err, "setting mtime for restored directory")
 		}
 	}
