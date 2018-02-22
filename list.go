@@ -25,7 +25,7 @@ func (b backup) GoString() string {
 // return backups in order of timestamp
 func listBackups() ([]*backup, error) {
 	var r []*backup
-	l, err := remote.List()
+	l, err := store.List()
 	if err != nil {
 		return nil, fmt.Errorf("listing remote: %s", err)
 	}

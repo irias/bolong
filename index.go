@@ -162,7 +162,7 @@ func readIndex(b *backup) (idx *index, err error) {
 	}
 	path := fmt.Sprintf("%s.index1.%s", b.name, kindName)
 	var f io.ReadCloser
-	f, err = remote.Open(path)
+	f, err = store.Open(path)
 	if err != nil {
 		return nil, fmt.Errorf("open index file: %s", err)
 	}

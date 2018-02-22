@@ -34,7 +34,7 @@ var (
 	configPath = flag.String("config", "", "path to config file")
 	remotePath = flag.String("path", "", "path at remote storage, overrides config file")
 	config     configuration
-	remote     destination
+	store      destination
 )
 
 func check(err error, msg string) {
@@ -127,7 +127,7 @@ func parseConfig() {
 		if !strings.HasSuffix(path, "/") {
 			path += "/"
 		}
-		remote = &local{path}
+		store = &local{path}
 	case "googles3":
 		if *remotePath != "" {
 			config.GoogleS3.Path = *remotePath
@@ -141,7 +141,7 @@ func parseConfig() {
 		if !strings.HasPrefix(path, "/") || !strings.HasSuffix(path, "/") {
 			log.Fatal(`field "googles3.path" must start and end with a slash`)
 		}
-		remote = &googleS3{config.GoogleS3.Bucket, path}
+		store = &googleS3{config.GoogleS3.Bucket, path}
 	}
 	if config.Passphrase == "" {
 		log.Fatalln("passphrase cannot be empty")

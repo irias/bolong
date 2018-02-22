@@ -222,7 +222,7 @@ func restoreCmd(args []string) {
 	restorePrevious := func(rest *restore) {
 		dataPath := fmt.Sprintf("%s.data", rest.previous.name)
 		var data io.ReadCloser
-		data, err := remote.Open(dataPath)
+		data, err := store.Open(dataPath)
 		check(err, "open data file")
 		data = &readCounter{data, transferred}
 		data, err = newSafeReader(data)
