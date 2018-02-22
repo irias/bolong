@@ -27,6 +27,7 @@ func (r *googleS3) authorize(msg string) string {
 	return fmt.Sprintf("AWS %s:%s", config.GoogleS3.AccessKey, sig)
 }
 
+// List returns filenames, ordered by name.
 func (r *googleS3) List() (names []string, err error) {
 	client := &http.Client{}
 	req, err := http.NewRequest("GET", "https://storage.googleapis.com/"+r.bucket+"/?prefix="+url.QueryEscape(r.path[1:]), nil)
@@ -69,6 +70,7 @@ func (r *googleS3) List() (names []string, err error) {
 	for i, name := range list.Key {
 		list.Key[i] = name[prefix:]
 	}
+	// the list is returned sorted by google cloud storage
 	return list.Key, nil
 }
 
