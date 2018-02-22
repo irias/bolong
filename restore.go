@@ -197,7 +197,7 @@ func restoreCmd(args []string) {
 		log.Printf("unknown group %q, not restoring that file group\n", name)
 		return -1
 	}
-	lchown := func(f *file, tpath string) {
+	lchown := func(f *file, tpath string) (err error) {
 		if euid != 0 {
 			return
 		}
@@ -216,20 +216,26 @@ func restoreCmd(args []string) {
 		}
 
 		err = os.Lchown(tpath, uid, gid)
-		check(err, "lchown")
+		return
 	}
 
 	restorePrevious := func(rest *restore) {
+		lcheck, handle := errorHandler(func(err error) {
+			// print additional newline, or we would print text behind progress text
+			log.Fatalln("\nrestore:", err)
+		})
+		defer handle()
+
 		dataPath := fmt.Sprintf("%s.data", rest.previous.name)
 		var data io.ReadCloser
 		data, err := store.Open(dataPath)
-		check(err, "open data file")
+		lcheck(err, "open data file")
 		data = &readCounter{data, transferred}
 		data, err = newSafeReader(data)
-		check(err, "opening safe reader")
+		lcheck(err, "opening safe reader")
 		defer func() {
 			err := data.Close()
-			check(err, "closing data file")
+			lcheck(err, "closing data file")
 		}()
 
 		sort.Slice(rest.files, func(i, j int) bool {
@@ -245,13 +251,13 @@ func restoreCmd(args []string) {
 
 			if file.dataOffset > offset {
 				_, err := io.Copy(ioutil.Discard, &io.LimitedReader{R: data, N: file.dataOffset - offset})
-				check(err, "skipping through data")
+				lcheck(err, "skipping through data")
 				offset = file.dataOffset
 			}
 
 			if file.isSymlink {
 				buf, err := ioutil.ReadAll(&io.LimitedReader{R: data, N: file.size})
-				check(err, "reading symlink path")
+				lcheck(err, "reading symlink path")
 				n := int64(len(buf))
 				if n != file.size {
 					log.Fatalf("short file contents for symlink %s: expected to read %d, but got %d", file.name, file.size, n)
@@ -259,25 +265,27 @@ func restoreCmd(args []string) {
 				offset += file.size
 				target := string(buf)
 				err = os.Symlink(target, tpath)
-				check(err, "creating symlink")
-				lchown(file, tpath)
+				lcheck(err, "creating symlink")
+				err = lchown(file, tpath)
+				lcheck(err, "lchown")
 			} else {
 				f, err := os.Create(tpath)
-				check(err, "restoring file")
+				lcheck(err, "restoring file")
 				r := &io.LimitedReader{R: data, N: file.size}
 				n, err := io.Copy(f, r)
 				if n != file.size {
 					log.Fatalf("short file contents for file %s: expected to write %d, but wrote %d", file.name, file.size, n)
 				}
 				offset += file.size
-				check(err, "restoring contents of file")
+				lcheck(err, "restoring contents of file")
 				err = f.Close()
-				check(err, "closing restored file")
-				lchown(file, tpath)
+				lcheck(err, "closing restored file")
+				err = lchown(file, tpath)
+				lcheck(err, "lchown")
 				err = os.Chmod(tpath, file.permissions)
-				check(err, "setting permisssions on restored file")
+				lcheck(err, "setting permisssions on restored file")
 				err = os.Chtimes(tpath, file.mtime, file.mtime)
-				check(err, "setting mtime/atime on restored file")
+				lcheck(err, "setting mtime/atime on restored file")
 			}
 		}
 	}
@@ -393,7 +401,8 @@ func restoreCmd(args []string) {
 	for _, f := range dirs {
 		if _, ok := needDirs[f.name]; ok {
 			tpath := target + f.name
-			lchown(f, tpath)
+			err = lchown(f, tpath)
+			check(err, "lchown")
 			err = os.Chtimes(tpath, f.mtime, f.mtime)
 			check(err, "setting mtime for restored directory")
 		}
