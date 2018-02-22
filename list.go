@@ -25,16 +25,29 @@ func (b backup) GoString() string {
 // return backups in order of timestamp
 func listBackups() ([]*backup, error) {
 	var r []*backup
-	l, err := remote.List()
+	l, err := store.List()
 	if err != nil {
 		return nil, fmt.Errorf("listing remote: %s", err)
 	}
+	const (
+		fullSuffix = ".index1.full"
+		incrSuffix = ".index1.incr"
+	)
 	for _, name := range l {
-		if strings.HasSuffix(name, ".index1.full") {
-			r = append(r, &backup{name[:len(name)-len(".index1.full")], false})
+
+		if strings.HasSuffix(name, fullSuffix) {
+			b := &backup{
+				name:        name[:len(name)-len(fullSuffix)],
+				incremental: false,
+			}
+			r = append(r, b)
 		}
-		if strings.HasSuffix(name, ".index1.incr") {
-			r = append(r, &backup{name[:len(name)-len(".index1.incr")], true})
+		if strings.HasSuffix(name, incrSuffix) {
+			b := &backup{
+				name:        name[:len(name)-len(incrSuffix)],
+				incremental: true,
+			}
+			r = append(r, b)
 		}
 	}
 	return r, nil

@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"sort"
 	"time"
 )
 
@@ -27,6 +28,7 @@ func (r *googleS3) authorize(msg string) string {
 	return fmt.Sprintf("AWS %s:%s", config.GoogleS3.AccessKey, sig)
 }
 
+// List returns filenames, ordered by name.
 func (r *googleS3) List() (names []string, err error) {
 	client := &http.Client{}
 	req, err := http.NewRequest("GET", "https://storage.googleapis.com/"+r.bucket+"/?prefix="+url.QueryEscape(r.path[1:]), nil)
@@ -69,6 +71,10 @@ func (r *googleS3) List() (names []string, err error) {
 	for i, name := range list.Key {
 		list.Key[i] = name[prefix:]
 	}
+	// names should already be sorted, but let's be sure...
+	sort.Slice(list.Key, func(i, j int) bool {
+		return list.Key[i] < list.Key[j]
+	})
 	return list.Key, nil
 }
 

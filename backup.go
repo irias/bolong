@@ -127,7 +127,7 @@ func backupCmd(args []string, name string) {
 				for _, path := range paths {
 					go func(path string) {
 						log.Println("cleaning up remote path", path)
-						err := remote.Delete(path)
+						err := store.Delete(path)
 						if err != nil {
 							log.Println("failed to cleanup remote path:", err)
 						}
@@ -144,7 +144,7 @@ func backupCmd(args []string, name string) {
 
 	dataPath := fmt.Sprintf("%s.data", name)
 	var data io.WriteCloser
-	data, err = remote.Create(dataPath)
+	data, err = store.Create(dataPath)
 	check(err, "creating data file")
 	partialpaths <- dataPath
 	dwc := &writeCounter{f: data}
@@ -275,7 +275,7 @@ func backupCmd(args []string, name string) {
 			}
 			nf.size = int64(n)
 		} else {
-			err := store(path, nf.size, data)
+			err := storeFile(path, nf.size, data)
 			if err != nil {
 				log.Fatalf("writing %s: %s\n", path, err)
 			}
@@ -322,7 +322,7 @@ func backupCmd(args []string, name string) {
 	}
 	indexPath := fmt.Sprintf("%s.index1.%s", name, kind)
 	var index io.WriteCloser
-	index, err = remote.Create(indexPath + ".tmp")
+	index, err = store.Create(indexPath + ".tmp")
 	check(err, "creating index file")
 	partialpaths <- indexPath + ".tmp"
 	index, err = newSafeWriter(index)
@@ -333,7 +333,7 @@ func backupCmd(args []string, name string) {
 	check(err, "writing index file")
 	err = index.Close()
 	check(err, "closing index file")
-	err = remote.Rename(indexPath+".tmp", indexPath)
+	err = store.Rename(indexPath+".tmp", indexPath)
 	check(err, "moving temp index file into place")
 	partialpaths <- "" // signal that we're done
 
@@ -360,24 +360,28 @@ func backupCmd(args []string, name string) {
 			if fullSeen < config.FullKeep {
 				continue
 			}
+			// remove everything (both incr and full) before this latest full
 			for j := 0; j < i; j++ {
-				if *verbose {
-					log.Println("cleaning up old backup", backups[j].name)
+				ext := "full"
+				kind := "full"
+				if backups[j].incremental {
+					ext = "incr"
+					kind = "incremental"
 				}
-				err = remote.Delete(backups[j].name + ".data")
+				if *verbose {
+					log.Printf("cleaning up old %s backup %s\n", kind, backups[j].name)
+				}
+				err = store.Delete(backups[j].name + ".data")
 				if err != nil {
 					log.Println("removing old backup:", err)
 				}
-				ext := "full"
-				if backups[j].incremental {
-					ext = "incr"
-				}
-				err = remote.Delete(backups[j].name + ".index1." + ext)
+				err = store.Delete(backups[j].name + ".index1." + ext)
 				if err != nil {
 					log.Println("removing old backup:", err)
 				}
 			}
-			backups = backups[:i+1]
+			// we'll continue with removing incrementals on the remaining backups, those we kept
+			backups = backups[i:]
 			break
 		}
 
@@ -390,6 +394,7 @@ func backupCmd(args []string, name string) {
 			if fullSeen < config.IncrementalForFullKeep {
 				continue
 			}
+			// remove all incrementals before this latest full backup we've just seen
 			for j := 0; j < i; j++ {
 				if !backups[j].incremental {
 					continue
@@ -397,11 +402,11 @@ func backupCmd(args []string, name string) {
 				if *verbose {
 					log.Println("cleaning up old incremental backup", backups[j].name)
 				}
-				err = remote.Delete(backups[j].name + ".data")
+				err = store.Delete(backups[j].name + ".data")
 				if err != nil {
 					log.Println("removing old incremental backup:", err)
 				}
-				err = remote.Delete(backups[j].name + ".index1.incr")
+				err = store.Delete(backups[j].name + ".index1.incr")
 				if err != nil {
 					log.Println("removing old incremental backup:", err)
 				}
@@ -424,10 +429,16 @@ func fileChanged(old, new *file) bool {
 	if old.name != new.name {
 		log.Fatalf("inconsistent fileChanged call, names don't match, %s != %s", old.name, new.name)
 	}
-	return old.isDir != new.isDir || old.isSymlink != new.isSymlink || old.size != new.size || old.mtime.Unix() != new.mtime.Unix() || old.permissions != new.permissions || old.user != new.user || old.group != new.group
+	return old.isDir != new.isDir ||
+		old.isSymlink != new.isSymlink ||
+		old.size != new.size ||
+		old.mtime.Unix() != new.mtime.Unix() ||
+		old.permissions != new.permissions ||
+		old.user != new.user ||
+		old.group != new.group
 }
 
-func store(path string, size int64, data io.Writer) (err error) {
+func storeFile(path string, size int64, data io.Writer) (err error) {
 	f, err := os.Open(path)
 	if err != nil {
 		return err

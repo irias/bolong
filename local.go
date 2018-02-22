@@ -12,6 +12,7 @@ type local struct {
 
 var _ destination = &local{}
 
+// List returns filenames sorted by name.
 func (l *local) List() (names []string, err error) {
 	files, err := ioutil.ReadDir(l.path)
 	if err != nil {

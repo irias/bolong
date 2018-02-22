@@ -12,7 +12,7 @@ func listfiles(args []string) {
 	name := fs.String("name", "latest", "name of backup to list files for")
 	verbose := fs.Bool("verbose", false, "verbose printing, including permissions and size")
 	fs.Usage = func() {
-		log.Println("usage: bolong [flags] listflags [flags]")
+		log.Println("usage: bolong [flags] listfiles [flags]")
 		fs.PrintDefaults()
 	}
 	fs.Parse(args)
