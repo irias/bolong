@@ -313,18 +313,18 @@ func TestMain(t *testing.T) {
 	backupCmd([]string{"testdir/workdir"}, "20171222-0005") // incr
 	backupCmd([]string{"testdir/workdir"}, "20171222-0006") // incr
 	backupCmd([]string{"testdir/workdir"}, "20171222-0007") // full
-	// we should now have 2 full, 2 incr
+	backupCmd([]string{"testdir/workdir"}, "20171222-0008") // incr
+	// we should now have 2 full, 1 incr
 	l, err = listBackups()
 	test(err, "listing backups")
-	if len(l) != 4 {
+	if len(l) != 3 {
 		t.Errorf("expected to have 4 backups, have %d, %#v", len(l), l)
 		return
 	}
 	expect := []string{
 		"20171222-0004",
-		"20171222-0005",
-		"20171222-0006",
 		"20171222-0007",
+		"20171222-0008",
 	}
 	for i, exp := range expect {
 		if l[i].name != exp {
@@ -334,7 +334,7 @@ func TestMain(t *testing.T) {
 	}
 
 	ensureTree(tree3)
-	backupCmd([]string{"testdir/workdir"}, "20171222-008")
+	backupCmd([]string{"testdir/workdir"}, "20171222-009")
 	resetRestoreDir()
 	restoreCmd([]string{"-quiet", "testdir/restore", "^a/a/", "/whitelisted$"})
 	xExpTree3 := testTree{

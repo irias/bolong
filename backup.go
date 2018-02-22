@@ -360,24 +360,28 @@ func backupCmd(args []string, name string) {
 			if fullSeen < config.FullKeep {
 				continue
 			}
+			// remove everything (both incr and full) before this latest full
 			for j := 0; j < i; j++ {
+				ext := "full"
+				kind := "full"
+				if backups[j].incremental {
+					ext = "incr"
+					kind = "incremental"
+				}
 				if *verbose {
-					log.Println("cleaning up old backup", backups[j].name)
+					log.Printf("cleaning up old %s backup %s\n", kind, backups[j].name)
 				}
 				err = store.Delete(backups[j].name + ".data")
 				if err != nil {
 					log.Println("removing old backup:", err)
-				}
-				ext := "full"
-				if backups[j].incremental {
-					ext = "incr"
 				}
 				err = store.Delete(backups[j].name + ".index1." + ext)
 				if err != nil {
 					log.Println("removing old backup:", err)
 				}
 			}
-			backups = backups[:i+1]
+			// we'll continue with removing incrementals on the remaining backups, those we kept
+			backups = backups[i:]
 			break
 		}
 
@@ -390,6 +394,7 @@ func backupCmd(args []string, name string) {
 			if fullSeen < config.IncrementalForFullKeep {
 				continue
 			}
+			// remove all incrementals before this latest full backup we've just seen
 			for j := 0; j < i; j++ {
 				if !backups[j].incremental {
 					continue
