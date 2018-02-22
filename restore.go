@@ -383,7 +383,8 @@ func restoreCmd(args []string) {
 			case n := <-transferred:
 				dataTransferred += int64(n)
 			case <-tick:
-				if *quiet {
+				// for verbose, the files are printed and interfere with the files
+				if *quiet || *verbose {
 					continue
 				}
 				printTick()
