@@ -424,7 +424,13 @@ func fileChanged(old, new *file) bool {
 	if old.name != new.name {
 		log.Fatalf("inconsistent fileChanged call, names don't match, %s != %s", old.name, new.name)
 	}
-	return old.isDir != new.isDir || old.isSymlink != new.isSymlink || old.size != new.size || old.mtime.Unix() != new.mtime.Unix() || old.permissions != new.permissions || old.user != new.user || old.group != new.group
+	return old.isDir != new.isDir ||
+		old.isSymlink != new.isSymlink ||
+		old.size != new.size ||
+		old.mtime.Unix() != new.mtime.Unix() ||
+		old.permissions != new.permissions ||
+		old.user != new.user ||
+		old.group != new.group
 }
 
 func store(path string, size int64, data io.Writer) (err error) {
