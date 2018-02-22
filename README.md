@@ -1,3 +1,5 @@
+# bolong
+
 Bolong is a simple, secure and fast command-line backup and restore tool.
 
 Features:
@@ -19,7 +21,7 @@ for our purposes. Simple backups are more likely to be reliable
 backups.
 
 
-# Examples
+## Examples
 
 First, create a config file to your liking, named ".bolong.json".
 By default, we look in the current directory a file by that name,
@@ -68,15 +70,15 @@ can also add regular expressions to only restore matching files.
 	bolong -path /myproject/ restore -name 20171001-230002 -verbose path/to/restore/to '\.go$'
 
 
-# Compression
+## Compression
 
-Bolong uses lz4 to compress all data. It so fast you can apply it
+Bolong uses lz4 to compress all data. It is fast enough to apply it
 to all files, so there is no need to complicate the code and
 configuration with applying compression selectively. Decompression
 is also very fast, so it won't slow down your restores.  The price
 you pay is a compression ratio that isn't too great.
 
-# Encryption
+## Encryption
 
 You don't want a cloud storage provider being able to read your
 backups. Or tamper with them. All backed up files are encrypted,
@@ -86,7 +88,7 @@ attempts to modify data are detected.
 Your files are protected by a passphrase. Each backed up file starts
 with a 32 byte salt. For each file, a key is derived using PBKDF2.
 
-# File format
+## File format
 
 Each backup is made of two files:
 
@@ -105,22 +107,22 @@ initiated (in UTC). A backup name has the form YYYYMMDD-hhmmdd. The
 file names have ".data" and either ".index1.full" or ".index1.incr"
 appended.
 
-# License
+## License
 
-This software is released under an MIT license. See LICENSE.MD.
+This software is released under an MIT license. See LICENSE.md.
 
-# Dependencies
+## Dependencies
 
 All dependencies are vendored in (included) in this repositories:
 
 	https://github.com/pierrec/lz4 (BSD license)
 	https://github.com/minio/sio (Apache license)
 
-# Contact
+## Contact
 
 For feedback, contact Mechiel Lukkien at mechiel@ueber.net.
 
 
-# Todo
+## Todo
 
 - is our behaviour desirable when restoring to a directory that already has some files?  we currently fail when we try to create a file/directory that already exists.
