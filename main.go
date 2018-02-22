@@ -146,6 +146,9 @@ func parseConfig() {
 	if config.Passphrase == "" {
 		log.Fatalln("passphrase cannot be empty")
 	}
+	if config.IncrementalForFullKeep > config.FullKeep && config.FullKeep > 0 {
+		log.Fatalln("incrementalForFullKeep > fullKeep does not make sense")
+	}
 }
 
 func printExampleConfig() {
