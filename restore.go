@@ -164,7 +164,7 @@ func restoreCmd(args []string) {
 		if _, ok := err.(user.UnknownUserError); !ok {
 			check(err, "user lookup")
 		}
-		id, err := strconv.ParseInt(u.Uid, 10, 64)
+		id, err := strconv.ParseInt(name, 10, 64)
 		if err == nil {
 			return int(id)
 		}
@@ -190,7 +190,7 @@ func restoreCmd(args []string) {
 		if _, ok := err.(user.UnknownGroupError); !ok {
 			check(err, "group lookup")
 		}
-		id, err := strconv.ParseInt(g.Gid, 10, 64)
+		id, err := strconv.ParseInt(name, 10, 64)
 		if err == nil {
 			return int(id)
 		}
@@ -204,7 +204,7 @@ func restoreCmd(args []string) {
 		uid := lookupUser(f.user)
 		users[f.user] = uid
 		gid := lookupGroup(f.group)
-		users[f.group] = gid
+		groups[f.group] = gid
 		if uid < 0 && gid < 0 {
 			return
 		}
