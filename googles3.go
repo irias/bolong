@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"sort"
 	"time"
 )
 
@@ -70,7 +71,10 @@ func (r *googleS3) List() (names []string, err error) {
 	for i, name := range list.Key {
 		list.Key[i] = name[prefix:]
 	}
-	// the list is returned sorted by google cloud storage
+	// names should already be sorted, but let's be sure...
+	sort.Slice(list.Key, func(i, j int) bool {
+		return list.Key[i] < list.Key[j]
+	})
 	return list.Key, nil
 }
 
